@@ -1,0 +1,197 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.inf]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.ini]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.cs]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.pp]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.inc]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.sh]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.bsh]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.bash]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.cfg]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.fff]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.py]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.h]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.hh]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.hlp]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.hpp]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.c]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.cpp]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.cxx]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.cc]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.m]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.md]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.mm]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.manifest]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.nfo]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.json]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.log]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.pem]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.php]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.php3]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.php4]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.php5]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.phps]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.ps1]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.txt]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.udf]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.UDL]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.udt]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.user]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.usr]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.uvu]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.wccf]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.xaml]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.xml]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.yaml]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.yml]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.vb]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.vbs]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.vbscript]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.wsf]
+@="Notepad++_file"
+"Content Type"="application/octet-stream"
