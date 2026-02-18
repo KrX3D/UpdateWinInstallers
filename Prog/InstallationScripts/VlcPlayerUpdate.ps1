@@ -106,17 +106,22 @@ function CheckVLCVersion {
 
     $url = "https://www.videolan.org/vlc/index.html"
     Write_LogEntry -Message "Rufe VLC-Webseite ab: $($url)" -Level "DEBUG"
-    $response = Invoke-WebRequest -Uri $url -UseBasicParsing
+    $responseContent = Invoke-WebRequestCompat -Uri $url -ReturnContent
+    if (-not $responseContent) {
+        Write_LogEntry -Message "Konnte VLC-Webseite nicht abrufen: $url" -Level "ERROR"
+        return
+    }
 
     # Extract the latest version of VLC Player from the HTML content
     $versionPattern = 'vlc-(\d+\.\d+\.\d+)-win64\.exe'
-    $matchesPattern = [regex]::Matches($response.Content, $versionPattern)
+    $latestVersionObj = Get-OnlineVersionFromContent -Content $responseContent -Regex $versionPattern -SelectLast
 
-    if ($matchesPattern.Success) {
-        $latestVersion = $matchesPattern | Select-Object -Last 1 -ExpandProperty Groups | Select-Object -Last 1 -ExpandProperty Value
+    if ($latestVersionObj) {
+        $latestVersion = $latestVersionObj.ToString()
         Write_LogEntry -Message "Gefundene Online-Version auf Webseite: $($latestVersion)" -Level "INFO"
     } else {
         Write_LogEntry -Message "Konnte Online-Version auf $($url) nicht ermitteln" -Level "WARNING"
+        return
     }
     Write-Host ""
     Write-Host "Lokale Version: $InstalledVersion" -foregroundcolor "Cyan"

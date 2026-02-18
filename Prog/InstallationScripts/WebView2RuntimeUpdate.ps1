@@ -5,7 +5,7 @@ param(
 $ProgramName = "Microsoft Edge Webview 2"
 $ScriptType  = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
+# === Logger-Header: automatisch eingefgt ===
 $modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
 
 if (Test-Path $modulePath) {
@@ -24,6 +24,18 @@ if (Test-Path $modulePath) {
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
+
+# DeployToolkit helpers
+$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
+if (Test-Path $dtPath) {
+    Import-Module -Name $dtPath -Force -ErrorAction Stop
+} else {
+    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
+        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
+    } else {
+        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
+    }
+}
 
 # Import shared configuration
 $configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
@@ -69,7 +81,7 @@ foreach ($Path in $RegistryPaths) {
                 $Versions += $Version
                 Write_LogEntry -Message "Gefundene Version in Registry-Pfad $($Path): $($Version)" -Level "DEBUG"
             } else {
-                Write_LogEntry -Message "Kein Wert für '$($KeyToCheck)' in Registry-Pfad $($Path) gefunden" -Level "DEBUG"
+                Write_LogEntry -Message "Kein Wert fr '$($KeyToCheck)' in Registry-Pfad $($Path) gefunden" -Level "DEBUG"
             }
         } else {
             Write_LogEntry -Message "Registry-Pfad nicht vorhanden: $($Path)" -Level "DEBUG"
@@ -103,7 +115,7 @@ try {
     $DataRegex = '"__NUXT_DATA__".*?>(\[.+?\])<'
     if ($PageContent.Content -match $DataRegex) {
         $JsonString = $Matches[1]
-        Write_LogEntry -Message "Nuxt JSON-Block extrahiert (Länge: $($JsonString.Length))" -Level "DEBUG"
+        Write_LogEntry -Message "Nuxt JSON-Block extrahiert (Lnge: $($JsonString.Length))" -Level "DEBUG"
 
         # Parse the JSON content into a PowerShell object
         $NuxtDataParsed = $JsonString | ConvertFrom-Json
@@ -153,7 +165,7 @@ if ($webVersion) {
     if ([version]$localVersion -lt [version]$webVersion) {
         $newFilePath = Join-Path -Path $InstallationFolder -ChildPath $fileWildcard
         $downloadLink = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
-        Write_LogEntry -Message "Update verfügbar: Lokal $($localVersion) < Online $($webVersion). Neuer Pfad: $($newFilePath); DownloadLink: $($downloadLink)" -Level "INFO"
+        Write_LogEntry -Message "Update verfgbar: Lokal $($localVersion) < Online $($webVersion). Neuer Pfad: $($newFilePath); DownloadLink: $($downloadLink)" -Level "INFO"
         
         if (Test-Path $newFilePath) {
             Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -foregroundcolor "magenta"
@@ -213,7 +225,7 @@ if($InstallationFlag){
 Write-Host ""
 Write_LogEntry -Message "Script-Ende erreicht" -Level "INFO"
 
-# === Logger-Footer: automatisch eingefügt ===
+# === Logger-Footer: automatisch eingefgt ===
 if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
     Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
 } else {

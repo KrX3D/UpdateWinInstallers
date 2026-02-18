@@ -5,7 +5,7 @@ param(
 $ProgramName = "Prismatik"
 $ScriptType  = "Install"
 
-# === Logger-Header: automatisch eingefügt ===
+# === Logger-Header: automatisch eingefgt ===
 $parentPath  = Split-Path -Path $PSScriptRoot -Parent
 $modulePath  = Join-Path -Path $parentPath -ChildPath 'Modules\Logger\Logger.psm1'
 
@@ -25,6 +25,18 @@ if (Test-Path $modulePath) {
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
+
+# DeployToolkit helpers
+$dtPath = Join-Path (Split-Path $PSScriptRoot -Parent) "Modules\DeployToolkit\DeployToolkit.psm1"
+if (Test-Path $dtPath) {
+    Import-Module -Name $dtPath -Force -ErrorAction Stop
+} else {
+    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
+        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
+    } else {
+        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
+    }
+}
 
 # Import shared configuration
 $configPath = Join-Path -Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
@@ -56,9 +68,9 @@ if ($prismatikInstaller) {
     try {
         Write_LogEntry -Message "Starte Prismatik Installer: $($prismatikInstaller.FullName)" -Level "INFO"
         Start-Process -FilePath $prismatikInstaller.FullName -ArgumentList '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXS', '/NOCANCEL', '/NORESTART', '/NOICONS' -Wait
-        Write_LogEntry -Message "Prismatik Installer ausgeführt: $($prismatikInstaller.FullName)" -Level "SUCCESS"
+        Write_LogEntry -Message "Prismatik Installer ausgefhrt: $($prismatikInstaller.FullName)" -Level "SUCCESS"
     } catch {
-        Write_LogEntry -Message "Fehler beim Ausführen des Prismatik Installers $($prismatikInstaller.FullName): $($_)" -Level "ERROR"
+        Write_LogEntry -Message "Fehler beim Ausfhren des Prismatik Installers $($prismatikInstaller.FullName): $($_)" -Level "ERROR"
     }
 } else {
     Write_LogEntry -Message "Kein Prismatik Installer gefunden unter $($Serverip)\Daten\Prog" -Level "WARNING"
@@ -114,7 +126,7 @@ if ($InstallationFlag -eq $true) {
     Write_LogEntry -Message "Link erstellt auf Desktop: $($shortcutPath)" -Level "DEBUG"
 }
 
-# === Logger-Footer: automatisch eingefügt ===
+# === Logger-Footer: automatisch eingefgt ===
 Write_LogEntry -Message "Script beendet: Program=$($ProgramName), ScriptType=$($ScriptType)" -Level "INFO"
 Finalize_LogSession
 # === Ende Logger-Footer ===

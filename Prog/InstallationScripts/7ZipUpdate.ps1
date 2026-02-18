@@ -124,9 +124,7 @@ if (-not $skipDownload) {
 
       if (Invoke-DownloadFile -Url $downloadUrl -OutFile $outFile) {
         # Remove old installers (keep new)
-        Get-ChildItem -Path $localPattern -File -ErrorAction SilentlyContinue |
-          Where-Object { $_.FullName -ne $outFile } |
-          ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+        Remove-FilesSafe -PathPattern $localPattern -ExcludeFullName @($outFile)
 
         Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
         Write_LogEntry -Message "$ProgramName wurde erfolgreich aktualisiert auf Version $bestOnlineV" -Level "SUCCESS"

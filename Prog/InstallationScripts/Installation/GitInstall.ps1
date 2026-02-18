@@ -5,7 +5,7 @@ param(
 $ProgramName = "Git"
 $ScriptType  = "Install"
 
-# === Logger-Header: automatisch eingefügt ===
+# === Logger-Header: automatisch eingefgt ===
 $parentPath  = Split-Path -Path $PSScriptRoot -Parent
 $modulePath  = Join-Path -Path $parentPath -ChildPath 'Modules\Logger\Logger.psm1'
 
@@ -25,6 +25,18 @@ if (Test-Path $modulePath) {
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName gesetzt: $($ProgramName); ScriptType gesetzt: $($ScriptType)" -Level "DEBUG"
+
+# DeployToolkit helpers
+$dtPath = Join-Path (Split-Path $PSScriptRoot -Parent) "Modules\DeployToolkit\DeployToolkit.psm1"
+if (Test-Path $dtPath) {
+    Import-Module -Name $dtPath -Force -ErrorAction Stop
+} else {
+    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
+        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
+    } else {
+        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
+    }
+}
 
 # Import shared configuration
 $configPath = Join-Path -Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
@@ -58,7 +70,7 @@ if ($gitInstaller) {
 }
 
 #Start-Process -FilePath "REGEDIT.EXE" -ArgumentList "/S $Serverip\Daten\Customize_Windows\Reg\Kontextmenu\Git_Kontextmenu_entfernen.reg" -Wait
-Write_LogEntry -Message "Starte Registry-Import Skript für Git Kontextmenu (via PSHostPath): $($PSHostPath) mit Pfad: $($Serverip)\Daten\Customize_Windows\Reg\Kontextmenu\Git_Kontextmenu_entfernen.reg" -Level "INFO"
+Write_LogEntry -Message "Starte Registry-Import Skript fr Git Kontextmenu (via PSHostPath): $($PSHostPath) mit Pfad: $($Serverip)\Daten\Customize_Windows\Reg\Kontextmenu\Git_Kontextmenu_entfernen.reg" -Level "INFO"
 try {
     & $PSHostPath `
         -NoLogo -NoProfile -ExecutionPolicy Bypass `
@@ -67,10 +79,10 @@ try {
     Write_LogEntry -Message "Registry-Importskript aufgerufen: $($Serverip)\Daten\Customize_Windows\Scripte\RegistryImport.ps1" -Level "SUCCESS"
 } catch {
     Write_LogEntry -Message "Fehler beim Aufruf des Registry-Importskripts: $($_)" -Level "ERROR"
-    Write-Host "Fehler beim Ausführen des Registry-Importskripts: $($_)" -ForegroundColor "Red"
+    Write-Host "Fehler beim Ausfhren des Registry-Importskripts: $($_)" -ForegroundColor "Red"
 }
 
-# === Logger-Footer: automatisch eingefügt ===
+# === Logger-Footer: automatisch eingefgt ===
 Write_LogEntry -Message "Script beendet: Program=$($ProgramName), ScriptType=$($ScriptType)" -Level "INFO"
 Finalize_LogSession
 # === Ende Logger-Footer ===

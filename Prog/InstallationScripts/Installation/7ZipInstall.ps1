@@ -25,6 +25,18 @@ if (Test-Path $modulePath) {
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName gesetzt: $($ProgramName); ScriptType gesetzt: $($ScriptType)" -Level "DEBUG"
 
+# DeployToolkit helpers
+$dtPath = Join-Path (Split-Path $PSScriptRoot -Parent) "Modules\DeployToolkit\DeployToolkit.psm1"
+if (Test-Path $dtPath) {
+    Import-Module -Name $dtPath -Force -ErrorAction Stop
+} else {
+    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
+        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
+    } else {
+        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
+    }
+}
+
 # Import shared configuration
 $configPath = Join-Path -Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
 
@@ -51,7 +63,7 @@ if (Test-Path $uninstallPath) {
     $uninstallArguments = "/S"
     Write_LogEntry -Message "Starte Deinstallation mit Argumenten: $($uninstallArguments)" -Level "DEBUG"
 
-    Start-Process -FilePath $uninstallPath -ArgumentList $uninstallArguments -Wait
+    [void](Invoke-InstallerFile -FilePath $uninstallPath -Arguments $uninstallArguments -Wait)
 
     Write_LogEntry -Message "7-Zip Deinstallation-Prozess beendet für: $($uninstallPath)" -Level "SUCCESS"
     Write-Host "	7-Zip wurde deinstalliert." -foregroundcolor "green"
@@ -73,7 +85,7 @@ if ($null -eq $installer -or $installer.Count -eq 0) {
 	foreach ($exe in $installer) {
         Write_LogEntry -Message "Beginne Installation von: $($exe)" -Level "INFO"
 	    Write-Host "7ZIP wird installiert: $exe" -foregroundcolor "magenta"
-	    Start-Process -FilePath $exe -ArgumentList "/S" -Wait
+	    [void](Invoke-InstallerFile -FilePath $exe -Arguments "/S" -Wait)
         Write_LogEntry -Message "Installationsprozess beendet für: $($exe)" -Level "SUCCESS"
     }
 }
@@ -83,7 +95,7 @@ Write_LogEntry -Message "Prüfe Startmenü-Pfad: $($startMenuPath)" -Level "DEBU
 if (Test-Path $startMenuPath -PathType Container) {
     Write_LogEntry -Message "Startmenüeintrag gefunden, entferne: $($startMenuPath)" -Level "INFO"
 	Write-Host "	Startmenüeintrag wird entfernt." -foregroundcolor "Cyan"
-    Remove-Item -Path $startMenuPath -Recurse -Force
+    [void](Remove-PathSafe -Path $startMenuPath -Recurse)
     Write_LogEntry -Message "Startmenüeintrag entfernt: $($startMenuPath)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Kein Startmenüeintrag vorhanden bei: $($startMenuPath)" -Level "DEBUG"
