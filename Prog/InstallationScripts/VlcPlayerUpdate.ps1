@@ -25,6 +25,14 @@ if (Test-Path $modulePath) {
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
 
+# Import DeployToolkit for shared version/install helpers
+$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
+if (-not (Test-Path $dtPath)) {
+    Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "ERROR"
+    exit 1
+}
+Import-Module -Name $dtPath -Force -ErrorAction Stop
+
 # Import shared configuration
 $configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
 Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
@@ -45,12 +53,10 @@ function ParseVersion {
         [string]$Filename
     )
 
-    $versionPattern = 'vlc-(\d+\.\d+\.\d+)-win64\.exe'
-    $match = [regex]::Match($Filename, $versionPattern)
-
-    if ($match.Success) {
-        Write_LogEntry -Message "Version aus Dateiname $($Filename) geparst: $($match.Groups[1].Value)" -Level "DEBUG"
-        return $match.Groups[1].Value
+    $version = Get-VersionFromFileName -Name $Filename -Regex 'vlc-(\d+\.\d+\.\d+)-win64\.exe'
+    if ($version) {
+        Write_LogEntry -Message "Version aus Dateiname $($Filename) geparst: $version" -Level "DEBUG"
+        return $version.ToString()
     }
 
     Write_LogEntry -Message "Konnte Version nicht aus Dateiname $($Filename) parsen" -Level "DEBUG"
@@ -100,17 +106,22 @@ function CheckVLCVersion {
 
     $url = "https://www.videolan.org/vlc/index.html"
     Write_LogEntry -Message "Rufe VLC-Webseite ab: $($url)" -Level "DEBUG"
-    $response = Invoke-WebRequest -Uri $url -UseBasicParsing
+    $responseContent = Invoke-WebRequestCompat -Uri $url -ReturnContent
+    if (-not $responseContent) {
+        Write_LogEntry -Message "Konnte VLC-Webseite nicht abrufen: $url" -Level "ERROR"
+        return
+    }
 
     # Extract the latest version of VLC Player from the HTML content
     $versionPattern = 'vlc-(\d+\.\d+\.\d+)-win64\.exe'
-    $matchesPattern = [regex]::Matches($response.Content, $versionPattern)
+    $latestVersionObj = Get-OnlineVersionFromContent -Content $responseContent -Regex $versionPattern -SelectLast
 
-    if ($matchesPattern.Success) {
-        $latestVersion = $matchesPattern | Select-Object -Last 1 -ExpandProperty Groups | Select-Object -Last 1 -ExpandProperty Value
+    if ($latestVersionObj) {
+        $latestVersion = $latestVersionObj.ToString()
         Write_LogEntry -Message "Gefundene Online-Version auf Webseite: $($latestVersion)" -Level "INFO"
     } else {
         Write_LogEntry -Message "Konnte Online-Version auf $($url) nicht ermitteln" -Level "WARNING"
+        return
     }
     Write-Host ""
     Write-Host "Lokale Version: $InstalledVersion" -foregroundcolor "Cyan"
@@ -223,26 +234,16 @@ if ($FoundFile) {
 
 #$Path  = Get-ChildItem 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -like $ProgramName + '*' }
 
-$RegistryPaths = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-Write_LogEntry -Message "Registry-Pfade für Suche: $($RegistryPaths -join ', ')" -Level "DEBUG"
+$installedInfo = Get-InstalledVersionInfo -DisplayNameLike "$($ProgramName)*"
 
-$Path = foreach ($RegPath in $RegistryPaths) {
-    if (Test-Path $RegPath) {
-        Write_LogEntry -Message "Uninstall-Pfad gefunden: $($RegPath)" -Level "DEBUG"
-        Get-ChildItem $RegPath | Get-ItemProperty | Where-Object { $_.DisplayName -like "$($ProgramName)*" }
-    } else {
-        Write_LogEntry -Message "Uninstall-Pfad nicht vorhanden: $($RegPath)" -Level "DEBUG"
-    }
-}
-
-if ($null -ne $Path) {
-    $installedVersion = $Path.DisplayVersion | Select-Object -First 1
+if ($null -ne $installedInfo) {
+    $installedVersion = $installedInfo.VersionRaw
     Write-Host "$($ProgramName) ist installiert." -foregroundcolor "green"
     Write-Host "	Installierte Version:       $installedVersion" -foregroundcolor "Cyan"
     Write-Host "	Installationsdatei Version: $localVersion" -foregroundcolor "Cyan"
     Write_LogEntry -Message "$($ProgramName) in Registry gefunden; InstalledVersion=$($installedVersion); LocalFileVersion=$($localVersion)" -Level "INFO"
 
-    if ([version]$installedVersion -lt [version]$localVersion) {
+    if (Test-InstallerUpdateRequired -InstalledVersion (ConvertTo-VersionSafe $installedVersion) -InstallerVersion (ConvertTo-VersionSafe $localVersion)) {
         Write-Host "		Veraltete $($ProgramName) ist installiert. Update wird gestartet." -foregroundcolor "magenta"
         $Install = $true
         Write_LogEntry -Message "Install = $($Install) (Update erforderlich)" -Level "INFO"

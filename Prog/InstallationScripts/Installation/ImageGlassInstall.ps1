@@ -26,6 +26,18 @@ if (Test-Path $modulePath) {
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName gesetzt: $($ProgramName); ScriptType gesetzt: $($ScriptType)" -Level "DEBUG"
 
+# DeployToolkit helpers
+$dtPath = Join-Path (Split-Path $PSScriptRoot -Parent) "Modules\DeployToolkit\DeployToolkit.psm1"
+if (Test-Path $dtPath) {
+    Import-Module -Name $dtPath -Force -ErrorAction Stop
+} else {
+    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
+        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
+    } else {
+        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
+    }
+}
+
 # Import shared configuration
 $configPath = Join-Path -Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
 Write_LogEntry -Message "Konfigurationspfad gesetzt: $($configPath)" -Level "DEBUG"
