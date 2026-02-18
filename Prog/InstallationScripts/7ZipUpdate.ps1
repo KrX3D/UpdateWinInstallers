@@ -52,7 +52,7 @@ Write_LogEntry -Message "Download-Seite URL: $downloadPageUrl" -Level "INFO"
 # Find best local installer (highest version)
 $localPattern = Join-Path $InstallationFolder "7z*-x64.exe"
 
-$local = Get-HighestVersionFile `
+$local = Get-LocalInstallerVersion `
   -PathPattern $localPattern `
   -FileNameRegex '7z(\d+)-x64\.exe' `
   -Convert { param($digits) Convert-7ZipDigitsToVersion $digits } `
@@ -141,11 +141,11 @@ if (-not $skipDownload) {
 Write-Host ""
 
 # Registry check (installed vs local)
-$installedRaw = Get-InstalledSoftwareVersion -DisplayNameLike "$ProgramName*"
-$installedV   = ConvertTo-VersionSafe $installedRaw
+$installedInfo = Get-InstalledVersionInfo -DisplayNameLike "$ProgramName*"
+$installedV    = if ($installedInfo) { $installedInfo.Version } else { $null }
 
 # Re-evaluate local after potential download
-$local = Get-HighestVersionFile `
+$local = Get-LocalInstallerVersion `
   -PathPattern $localPattern `
   -FileNameRegex '7z(\d+)-x64\.exe' `
   -Convert { param($digits) Convert-7ZipDigitsToVersion $digits } `
@@ -159,7 +159,7 @@ if ($installedV) {
   Write-Host "    Installierte Version:       $installedV" -ForegroundColor Cyan
   Write-Host "    Installationsdatei Version: $localVersion" -ForegroundColor Cyan
 
-  if ($localVersion -and $installedV -lt $localVersion) {
+  if (Test-InstallerUpdateRequired -InstalledVersion $installedV -InstallerVersion $localVersion) {
     Write-Host "        Veraltete Version erkannt. Update wird gestartet." -ForegroundColor Magenta
     $Install = $true
   } else {
