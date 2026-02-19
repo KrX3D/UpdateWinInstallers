@@ -61,7 +61,7 @@ Write-Host "Adobe Acrobat Reader DC wird installiert" -foregroundcolor "magenta"
 Write_LogEntry -Message "Suche Installer unter: $($Serverip)\Daten\Prog\AcroRdrDC*.exe" -Level "DEBUG"
 $acrobatExe = Get-ChildItem "$Serverip\Daten\Prog\AcroRdrDC*.exe" | Select-Object -ExpandProperty FullName
 Write_LogEntry -Message "Gefundener Acrobat-Installer: $($acrobatExe)" -Level "DEBUG"
-Start-Process -FilePath $acrobatExe -ArgumentList "/sPB /rs /l /msi /qn /norestart ALLUSERS=1 EULA_ACCEPT=YES UPDATE_MODE=0 DISABLE_ARM_SERVICE_INSTALL=1 SUPPRESS_APP_LAUNCH=YES DISABLEDESKTOPSHORTCUT=1 DISABLE_PDFMAKER=YES ENABLE_CHROMEEXT=0 DISABLE_CACHE=1" -Wait # REMOVE=AcrobatBrowserIntegration,ReaderBrowserIntegration funktioniert nicht ERROR
+[void](Invoke-InstallerFile -FilePath $acrobatExe -Arguments "/sPB /rs /l /msi /qn /norestart ALLUSERS=1 EULA_ACCEPT=YES UPDATE_MODE=0 DISABLE_ARM_SERVICE_INSTALL=1 SUPPRESS_APP_LAUNCH=YES DISABLEDESKTOPSHORTCUT=1 DISABLE_PDFMAKER=YES ENABLE_CHROMEEXT=0 DISABLE_CACHE=1" -Wait) # REMOVE=AcrobatBrowserIntegration,ReaderBrowserIntegration funktioniert nicht ERROR
 Write_LogEntry -Message "Start-Process für Acrobat-Installer aufgerufen: $($acrobatExe)" -Level "INFO"
 #REMOVE_PREVIOUS=YES
 #"/sAll /rs 

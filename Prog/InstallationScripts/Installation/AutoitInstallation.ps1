@@ -66,7 +66,7 @@ if (($InstallationFlag -eq $true) -or ($Autoit -eq $true)) {
 	Write-Host "AutoIt wird installiert" -foregroundcolor "magenta"
 	$AutoItInstallerPath = Get-ChildItem -Path "$AutoItFolder\autoit-v3*.exe" | Select-Object -ExpandProperty FullName
 	Write_LogEntry -Message "Gefundener AutoIt-Installer: $($AutoItInstallerPath)" -Level "DEBUG"
-	Start-Process -FilePath $AutoItInstallerPath -ArgumentList "/S" -Wait
+	[void](Invoke-InstallerFile -FilePath $AutoItInstallerPath -Arguments "/S" -Wait)
 	Write_LogEntry -Message "AutoIt Installer-Aufruf beendet für: $($AutoItInstallerPath)" -Level "SUCCESS"
 }
 
@@ -76,7 +76,7 @@ if (($InstallationFlag -eq $true) -or ($Scite -eq $true)) {
 	Write-Host "SciTE4 wird installiert" -foregroundcolor "magenta"
 	$SciTE4InstallerPath = Get-ChildItem -Path "$AutoItFolder\SciTE4*.exe" | Select-Object -ExpandProperty FullName
 	Write_LogEntry -Message "Gefundener SciTE4-Installer: $($SciTE4InstallerPath)" -Level "DEBUG"
-	Start-Process -FilePath $SciTE4InstallerPath -ArgumentList "/S" -Wait
+	[void](Invoke-InstallerFile -FilePath $SciTE4InstallerPath -Arguments "/S" -Wait)
 	Write_LogEntry -Message "SciTE4 Installer-Aufruf beendet für: $($SciTE4InstallerPath)" -Level "SUCCESS"
 }
 
@@ -86,7 +86,7 @@ if ($InstallationFlag -eq $true) {
 	Write-Host "VC redist wird installiert" -foregroundcolor "magenta"
 	$VCRedistInstallerPath = Get-ChildItem -Path "$AutoItFolder\VC_redist*.exe" | Select-Object -ExpandProperty FullName
 	Write_LogEntry -Message "Gefundener VC Redist Installer: $($VCRedistInstallerPath)" -Level "DEBUG"
-	Start-Process -FilePath $VCRedistInstallerPath -ArgumentList "/install", "/passive", "/qn", "/norestart" -Wait
+	[void](Invoke-InstallerFile -FilePath $VCRedistInstallerPath -Arguments "/install", "/passive", "/qn", "/norestart" -Wait)
 	Write_LogEntry -Message "VC Redist Installer-Aufruf beendet für: $($VCRedistInstallerPath)" -Level "SUCCESS"
 }
 

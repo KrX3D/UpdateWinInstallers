@@ -75,7 +75,7 @@ Write_LogEntry -Message "Installationsdatei Pfad: $($InstallFolder)" -Level "DEB
 
 try {
     Write_LogEntry -Message "Starte Installer: $($InstallFolder) mit Argumenten '-noreboot -clean -noeula -nofinish -passive'" -Level "INFO"
-    Start-Process -FilePath $InstallFolder -ArgumentList "-noreboot -clean -noeula -nofinish -passive" -Wait
+    [void](Invoke-InstallerFile -FilePath $InstallFolder -Arguments "-noreboot -clean -noeula -nofinish -passive" -Wait)
     Write_LogEntry -Message "Installer-Prozess beendet: $($InstallFolder)" -Level "SUCCESS"
 } catch {
     Write_LogEntry -Message "Fehler beim Starten des Installers $($InstallFolder): $($_)" -Level "ERROR"
