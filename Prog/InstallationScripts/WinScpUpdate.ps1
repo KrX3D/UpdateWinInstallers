@@ -17,13 +17,13 @@ function Invoke-WebRequestCompat {
     )
     if ($UseBasicParsingSupported) {
         if ($OutFile) {
-            return Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
+            return (Invoke-DownloadFile -Url $Uri -OutFile $OutFile)
         } else {
             return Invoke-WebRequest -Uri $Uri -UseBasicParsing -ErrorAction Stop
         }
     } else {
         if ($OutFile) {
-            return Invoke-WebRequest -Uri $Uri -OutFile $OutFile -ErrorAction Stop
+            return (Invoke-DownloadFile -Url $Uri -OutFile $OutFile)
         } else {
             return Invoke-WebRequest -Uri $Uri -ErrorAction Stop
         }
@@ -328,7 +328,7 @@ if ($InstallationFileFile) {
                     try { $webClient.Proxy = [System.Net.WebRequest]::DefaultWebProxy } catch {}
 
                     # Download (synchronous, fast)
-                    $webClient.DownloadFile($downloadLink, $downloadPath)
+                    [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
                     $downloadSucceeded = Test-Path -Path $downloadPath
 
                     if ($downloadSucceeded) {

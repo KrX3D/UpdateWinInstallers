@@ -186,7 +186,7 @@ if ($null -eq $latestRelease) {
 
             try {
                 Write_LogEntry -Message "Starte Download von $($downloadURL) nach $($tempPath)" -Level "INFO"
-                $webClient.DownloadFile($downloadURL, $tempPath)
+                [void](Invoke-DownloadFile -Url $downloadURL -OutFile $tempPath)
                 $webClient.Dispose()
                 Write_LogEntry -Message "Download beendet (temp vorhanden: $([bool](Test-Path $tempPath)))" -Level "DEBUG"
             } catch {

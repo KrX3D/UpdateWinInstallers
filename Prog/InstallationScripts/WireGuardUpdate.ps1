@@ -102,7 +102,7 @@ if ($installerFile) {
         #Invoke-RestMethod -Uri $downloadUrl -OutFile $downloadPath
         $webClient = New-Object System.Net.WebClient
         try {
-            $webClient.DownloadFile($downloadUrl, $downloadPath)
+            [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
             Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message "Fehler beim Herunterladen $($downloadUrl) nach $($downloadPath): $($_)" -Level "ERROR"

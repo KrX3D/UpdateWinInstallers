@@ -154,7 +154,7 @@ if (!$skipDownload) {
                     try {
                         Write_LogEntry -Message "Starte Download von $downloadUrl..." -Level "INFO"
                         $webClient = New-Object System.Net.WebClient
-                        $webClient.DownloadFile($downloadUrl, $tempExePath)
+                        [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $tempExePath)
                         $webClient.Dispose()
                         Write_LogEntry -Message "Download erfolgreich abgeschlossen" -Level "SUCCESS"
                     } catch {

@@ -228,7 +228,7 @@ if (-not $chosenRelease) {
                 $wc = New-Object System.Net.WebClient
                 if ($headers.ContainsKey('User-Agent')) { $wc.Headers.Add('User-Agent', $headers['User-Agent']) }
                 if ($headers.ContainsKey('Authorization')) { $wc.Headers.Add('Authorization', $headers['Authorization']) }
-                $wc.DownloadFile($downloadLink, $tempFile)
+                [void](Invoke-DownloadFile -Url $downloadLink -OutFile $tempFile)
                 $wc.Dispose()
                 $downloadOk = Test-Path -Path $tempFile
                 Write_LogEntry -Message "Temp-Download abgeschlossen: $($tempFile) (exists: $($downloadOk))" -Level "DEBUG"

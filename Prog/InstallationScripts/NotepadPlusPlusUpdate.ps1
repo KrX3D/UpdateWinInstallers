@@ -253,7 +253,7 @@ if ($needDownload -and $chosenAsset) {
         if ($GithubToken) {
             $wc.Headers.Add("Authorization", "token $GithubToken")
         }
-        $wc.DownloadFile($downloadUrl, $downloadPath)
+        [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
         Write_LogEntry -Message "Download abgeschlossen: $downloadPath" -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler beim Download $downloadUrl : $($_.Exception.Message)" -Level "ERROR"
