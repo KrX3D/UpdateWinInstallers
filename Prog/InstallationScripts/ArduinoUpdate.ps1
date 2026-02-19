@@ -60,10 +60,7 @@ Write_LogEntry -Message "InstallationFilePattern gesetzt auf: $($InstallationFil
 Write_LogEntry -Message "ProgramName gesetzt auf: $($ProgramName)" -Level "DEBUG"
 
 # Get the local installer (exclude _old)
-$localInstaller = Get-ChildItem -Path $InstallationFolder -Filter $InstallationFilePattern -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -notlike "*_old*" } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+$localInstaller = Get-InstallerFilePath -Directory $InstallationFolder -Filter $InstallationFilePattern -ExcludeNameLike "*_old*"
 
 if ($null -ne $localInstaller) {
     Write_LogEntry -Message "Lokaler Installer gefunden: $($localInstaller.Name)" -Level "DEBUG"
@@ -76,10 +73,10 @@ $localFileVersion = $null
 if ($localInstaller) {
     # Try product version first (executable properties)
     try {
-        $prop = (Get-ItemProperty -Path $localInstaller.FullName -ErrorAction Stop).VersionInfo
-        if ($prop.ProductVersion) {
+        $productVersion = Get-InstallerFileVersion -FilePath $localInstaller.FullName -Source ProductVersion
+        if ($productVersion) {
             # take first three components for consistent comparison
-            $localFileVersion = (($prop.ProductVersion -split '\.')[0..2] -join '.')
+            $localFileVersion = (($productVersion -split '\.')[0..2] -join '.')
         }
     } catch {
         Write_LogEntry -Message "Fehler beim Lesen der Produktversion vom lokalen Installer: $($_)" -Level "DEBUG"
@@ -87,8 +84,7 @@ if ($localInstaller) {
 
     # If product version not available, parse from filename (robust match)
     if (-not $localFileVersion) {
-        $mLocal = [regex]::Match($localInstaller.Name, '(\d+\.\d+\.\d+)')
-        if ($mLocal.Success) { $localFileVersion = $mLocal.Groups[1].Value }
+        $localFileVersion = Get-InstallerFileVersion -FilePath $localInstaller.FullName -FileNameRegex '(\d+\.\d+\.\d+)' -Source FileName
     }
 }
 
@@ -231,21 +227,17 @@ Write-Host ""
 Write_LogEntry -Message "Abschnitt Prüfung/Download abgeschlossen." -Level "DEBUG"
 
 #Check Installed Version / Install if needed (re-evaluate local file after potential download)
-$FoundFile = Get-ChildItem -Path $InstallationFolder -Filter $InstallationFilePattern -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -notlike "*_old*" } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+$FoundFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter $InstallationFilePattern -ExcludeNameLike "*_old*"
 
 if ($null -ne $FoundFile) {
     Write_LogEntry -Message "Gefundene Installationsdatei für Check: $($FoundFile.FullName)" -Level "DEBUG"
     $InstallationFileName = $FoundFile.Name
     $localInstallerPath = $FoundFile.FullName
     try {
-        $localVersion = (Get-Item $localInstallerPath -ErrorAction Stop).VersionInfo.ProductVersion
+        $localVersion = Get-InstallerFileVersion -FilePath $localInstallerPath -Source ProductVersion
     } catch {
         # fallback to filename parse
-        $m = [regex]::Match($InstallationFileName, '(\d+\.\d+\.\d+)')
-        if ($m.Success) { $localVersion = $m.Groups[1].Value } else { $localVersion = $null }
+        $localVersion = Get-InstallerFileVersion -FilePath $localInstallerPath -FileNameRegex '(\d+\.\d+\.\d+)' -Source FileName
     }
     Write_LogEntry -Message "Lokaler Installer Pfad: $($localInstallerPath), ProduktVersion/Filename: $($localVersion)" -Level "DEBUG"
 } else {

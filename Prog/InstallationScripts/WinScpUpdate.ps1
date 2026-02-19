@@ -79,7 +79,7 @@ if (Test-Path -Path $configPath) {
 $installerPath = "$InstallationFolder\WinSCP-*.exe"
 Write_LogEntry -Message "Installer-Pfad (Wildcard): $($installerPath)" -Level "DEBUG"
 
-$InstallationFileFile = Get-ChildItem -Path $installerPath -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$InstallationFileFile = Get-InstallerFilePath -PathPattern $installerPath
 if ($InstallationFileFile) {
     Write_LogEntry -Message "Gefundene Installationsdatei: $($InstallationFileFile.FullName)" -Level "INFO"
 } else {
@@ -387,7 +387,7 @@ if ($InstallationFileFile) {
     Write_LogEntry -Message "Beginne Prüfung installierter Versionen in der Registry" -Level "DEBUG"
 
     #Check Installed Version / Install if needed
-    $InstallationFileFile = Get-ChildItem -Path $installerPath -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $InstallationFileFile = Get-InstallerFilePath -PathPattern $installerPath
     if ($InstallationFileFile) {
         $versionInfo = (Get-Item $InstallationFileFile).VersionInfo
         $localVersion = ($versionInfo.ProductVersion).ToString().Trim()

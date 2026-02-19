@@ -59,14 +59,14 @@ $ProgramName = "WireGuard"
 
 $installerPath = "$InstallationFolder\wireguard-amd64-*.msi"
 Write_LogEntry -Message "Installer-Pfad (Wildcard): $($installerPath)" -Level "DEBUG"
-$installerFile = Get-ChildItem -Path $installerPath | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$installerFile = Get-InstallerFilePath -PathPattern $installerPath
 
 # Check if the installer file exists
 if ($installerFile) {
     Write_LogEntry -Message "Gefundene Installationsdatei: $($installerFile.FullName)" -Level "INFO"
     # Extract the version number from the file name
     $versionPattern = 'wireguard-amd64-(\d+\.\d+\.\d+)\.msi'
-    $localVersion = [regex]::Match($installerFile.Name, $versionPattern).Groups[1].Value
+    $localVersion = Get-InstallerFileVersion -FilePath $installerFile.FullName -FileNameRegex $versionPattern -Source FileName
     Write_LogEntry -Message "Lokale Installationsdatei Version ermittelt: $($localVersion)" -Level "DEBUG"
     
     # Retrieve the latest version online from the GitHub repository tags
@@ -138,10 +138,10 @@ if ($installerFile) {
 Write-Host ""
 
 #Check Installed Version / Install if neded
-$installerFile = Get-ChildItem -Path $installerPath | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$installerFile = Get-InstallerFilePath -PathPattern $installerPath
 if ($installerFile) {
     $versionPattern = 'wireguard-amd64-(\d+\.\d+\.\d+)\.msi'
-    $localVersion = [regex]::Match($installerFile.Name, $versionPattern).Groups[1].Value
+    $localVersion = Get-InstallerFileVersion -FilePath $installerFile.FullName -FileNameRegex $versionPattern -Source FileName
     Write_LogEntry -Message "Ermittelte lokale Dateiversion nach erneutem Scan: $($localVersion) (Datei: $($installerFile.FullName))" -Level "DEBUG"
 } else {
     Write_LogEntry -Message "Keine Installationsdatei gefunden beim zweiten Scan: $($installerPath)" -Level "DEBUG"

@@ -57,7 +57,7 @@ $localInstallerPath = "$InstallationFolder\jdk*windows-x64_bin.msi"
 Write_LogEntry -Message "Suche lokale Installer unter: $($localInstallerPath)" -Level "DEBUG"
 
 # Get the local installer file
-$localInstaller = Get-ChildItem -Path $localInstallerPath | Select-Object -First 1
+$localInstaller = Get-InstallerFilePath -PathPattern $localInstallerPath
 Write_LogEntry -Message ("Gefundene lokale Installer-Datei: " + $([string]($localInstaller | Select-Object -ExpandProperty FullName -ErrorAction SilentlyContinue))) -Level "DEBUG"
 
 # Check if the local installer file exists
@@ -66,7 +66,7 @@ if ($localInstaller) {
 
     # Extract the version number from the local installer file name
     $localVersionRegex = 'jdk-([\d._]+)_windows-x64_bin.msi'
-    $localVersion = [regex]::Match($localInstaller.Name, $localVersionRegex).Groups[1].Value
+    $localVersion = Get-InstallerFileVersion -FilePath $localInstaller.FullName -FileNameRegex $localVersionRegex -Source FileName
     Write_LogEntry -Message "Lokale Version extrahiert aus Dateiname: $($localVersion)" -Level "DEBUG"
 
     # If the version contains an underscore, split it and take the second part as the version
@@ -158,9 +158,9 @@ Write-Host ""
 Write_LogEntry -Message "Starte Prüfung installierter Versionen (Registry)." -Level "DEBUG"
 
 #Check Installed Version / Install if neded
-$localInstaller = Get-ChildItem -Path $localInstallerPath | Select-Object -First 1
+$localInstaller = Get-InstallerFilePath -PathPattern $localInstallerPath
 $localVersionRegex = 'jdk-([\d._]+)_windows-x64_bin.msi'
-$localVersion = [regex]::Match($localInstaller.Name, $localVersionRegex).Groups[1].Value
+$localVersion = Get-InstallerFileVersion -FilePath $localInstaller.FullName -FileNameRegex $localVersionRegex -Source FileName
 if ($localVersion -like '*_*') {
 	$localVersion = ($localVersion -split '_')[1]
     Write_LogEntry -Message "Lokale Version nach letztem Extrakt: $($localVersion)" -Level "DEBUG"

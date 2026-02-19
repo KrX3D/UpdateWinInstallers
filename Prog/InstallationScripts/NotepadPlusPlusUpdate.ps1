@@ -56,7 +56,7 @@ $InstallationFileFile = Join-Path -Path $InstallationFolder -ChildPath $installe
 Write_LogEntry -Message "Suchmuster für Installer gesetzt: $($InstallationFileFile)" -Level "DEBUG"
 
 # Try to find existing local installer (last one)
-$FoundFile = Get-ChildItem -Path $InstallationFolder -Filter $installerPattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$FoundFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter $installerPattern
 if ($FoundFile) {
     Write_LogEntry -Message "Lokale Datei gefunden: $($FoundFile.FullName)" -Level "DEBUG"
     $InstallationFileName = $FoundFile.Name

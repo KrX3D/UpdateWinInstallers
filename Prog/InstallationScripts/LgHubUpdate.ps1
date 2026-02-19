@@ -60,7 +60,7 @@ $filenamePattern = "lghub_installer*.exe"
 Write_LogEntry -Message "InstallationFolder: $($InstallationFolder); FilenamePattern: $($filenamePattern)" -Level "DEBUG"
 
 # Get the latest local file matching the pattern
-$latestFile = Get-ChildItem -Path $InstallationFolder -Filter $filenamePattern | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$latestFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter $filenamePattern
 Write_LogEntry -Message "Gefundene lokale Datei (latestFile exists): $($([bool]$latestFile)); Pfad: $($($latestFile.FullName -as [string]))" -Level "DEBUG"
 
 if ($latestFile) {
@@ -245,7 +245,7 @@ Write_LogEntry -Message "Ermittle aktuellste lokale Datei nochmals für Installa
 Write-Host ""
 
 #Check Installed Version / Install if needed
-$FoundFile = Get-ChildItem -Path $InstallationFolder -Filter $filenamePattern | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$FoundFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter $filenamePattern
 
 if ($FoundFile) {
 	$localVersion = $FoundFile.Name -replace 'lghub_installer_|\.exe', ''

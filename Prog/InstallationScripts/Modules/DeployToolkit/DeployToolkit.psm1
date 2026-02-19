@@ -27,6 +27,8 @@ Export-ModuleMember -Function @(
   'Copy-FileSafe',
   'Invoke-InstallerFile',
   'Get-InstallerFile',
+  'Get-InstallerFilePath',
+  'Get-InstallerFileVersion',
   'Get-OnlineVersion',
   'Sync-InstallerFromOnline',
   'Get-RegistryVersion',

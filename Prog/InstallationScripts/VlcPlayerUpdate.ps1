@@ -196,7 +196,7 @@ function CheckVLCVersion {
 }
 
 # Get the latest VLC Player installer file in the directory
-$latestInstaller = Get-ChildItem -Path $InstallationFolder -Filter "vlc-*-win64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$latestInstaller = Get-InstallerFilePath -Directory $InstallationFolder -Filter "vlc-*-win64.exe"
 
 if ($latestInstaller) {
     Write_LogEntry -Message "Gefundene lokale Installer-Datei: $($latestInstaller.FullName)" -Level "DEBUG"
@@ -221,7 +221,7 @@ if ($latestInstaller) {
 Write-Host ""
 
 #Check Installed Version / Install if neded
-$FoundFile = Get-ChildItem -Path $InstallationFolder -Filter "vlc-*-win64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$FoundFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter "vlc-*-win64.exe"
 if ($FoundFile) {
     Write_LogEntry -Message "Gefundene Installationsdatei für nachfolgende Prüfungen: $($FoundFile.FullName)" -Level "DEBUG"
     $InstallationFileName = $FoundFile.Name
