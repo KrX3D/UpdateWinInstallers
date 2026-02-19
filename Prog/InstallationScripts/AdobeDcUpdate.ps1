@@ -57,23 +57,16 @@ if (Test-Path -Path $configPath) {
 $installerPath = "$InstallationFolder\AcroRdrDC*_de_DE.exe"
 Write_LogEntry -Message "Installer path gesetzt: $installerPath" -Level "DEBUG"
 
-# Get the latest installer file matching the wildcard pattern
-try {
-    $installerFile = Get-ChildItem -Path $installerPath | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    Write_LogEntry -Message "Get-ChildItem für Installer ausgeführt." -Level "DEBUG"
-} catch {
-    $installerFile = $null
-    Write_LogEntry -Message "Fehler beim Auflisten der Installationsdateien: $_" -Level "ERROR"
-}
-
 $versionPattern = 'AcroRdrDCx64(\d+)_de_DE.exe'
 Write_LogEntry -Message "Version pattern gesetzt: $versionPattern" -Level "DEBUG"
+
+$installerFile = Get-InstallerFilePath -PathPattern $installerPath
 
 # Check if the installer file exists
 if ($installerFile) {
     Write_LogEntry -Message "Installer gefunden: $($installerFile.Name)" -Level "INFO"
     # Extract the version number from the file name
-    $fileVersion = [regex]::Match($installerFile.Name, $versionPattern).Groups[1].Value
+    $fileVersion = Get-InstallerFileVersion -FilePath $installerFile.FullName -FileNameRegex $versionPattern -Source FileName
     Write_LogEntry -Message "Lokale Installationsdatei Version extrahiert: $fileVersion" -Level "DEBUG"
 
     # Check if there is a newer version available online
@@ -114,7 +107,7 @@ if ($installerFile) {
                 try {
                     #Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
                     $webClient = New-Object System.Net.WebClient
-                    $webClient.DownloadFile($downloadUrl, $downloadPath)
+                    [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
                     $webClient.Dispose()
                     Write_LogEntry -Message "Download-Versuch ausgeführt: $downloadUrl -> $downloadPath" -Level "DEBUG"
 
@@ -151,7 +144,8 @@ Write-Host ""
 
 #Check Installed Version / Install if needed
 try {
-    $localVersion = [regex]::Match((Get-ChildItem -Path $installerPath | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name, $versionPattern).Groups[1].Value
+    $latestInstaller = Get-InstallerFilePath -PathPattern $installerPath
+    $localVersion = if ($latestInstaller) { Get-InstallerFileVersion -FilePath $latestInstaller.FullName -FileNameRegex $versionPattern -Source FileName } else { $null }
     Write_LogEntry -Message "Lokale Installationsdatei Version (für Vergleiche) ist: $localVersion" -Level "DEBUG"
 } catch {
     $localVersion = $null

@@ -229,7 +229,7 @@ if ($localInstaller) {
                     $webClient.Headers.Add("Authorization", $headers['Authorization'])
                 }
                 Write_LogEntry -Message "Starte Download von $($downloadURL) -> $($downloadPath)" -Level "INFO"
-                $webClient.DownloadFile($downloadURL, $downloadPath)
+                [void](Invoke-DownloadFile -Url $downloadURL -OutFile $downloadPath)
                 Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "SUCCESS"
             } catch {
                 Write_LogEntry -Message "Fehler beim Herunterladen $($downloadURL): $($_)" -Level "ERROR"
