@@ -204,3 +204,97 @@ function Set-UserFileAssociations {
 
   return $true
 }
+
+function Get-OnlineVersionInfo {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Url,
+    [Parameter(Mandatory)][string]$Regex,
+    [int]$RegexGroup = 1,
+    [scriptblock]$Transform,
+    [switch]$SelectLast
+  )
+
+  $content = Invoke-WebRequestCompat -Uri $Url -ReturnContent
+  if (-not $content) {
+    return [pscustomobject]@{ Url = $Url; Content = $null; Version = $null }
+  }
+
+  $version = Get-OnlineVersionFromContent -Content $content -Regex $Regex -RegexGroup $RegexGroup -SelectLast:$SelectLast
+  if ($Transform) {
+    $version = & $Transform $version
+  }
+
+  [pscustomobject]@{ Url = $Url; Content = $content; Version = $version }
+}
+
+function Invoke-InstallerDownload {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Url,
+    [Parameter(Mandatory)][string]$OutFile,
+    [System.Net.SecurityProtocolType]$SecurityProtocol
+  )
+
+  if ($PSBoundParameters.ContainsKey('SecurityProtocol')) {
+    return Invoke-DownloadFile -Url $Url -OutFile $OutFile -SecurityProtocol $SecurityProtocol
+  }
+
+  return Invoke-DownloadFile -Url $Url -OutFile $OutFile
+}
+
+function Resolve-DownloadedInstaller {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$DownloadedFile,
+    [string]$RemovePattern,
+    [switch]$ReplaceOld,
+    [string[]]$KeepFiles
+  )
+
+  if (-not (Test-Path -LiteralPath $DownloadedFile)) { return $false }
+  if ((Get-Item -LiteralPath $DownloadedFile).Length -le 0) { return $false }
+
+  if ($ReplaceOld -and $RemovePattern) {
+    $exclude = @($DownloadedFile)
+    if ($KeepFiles) { $exclude += $KeepFiles }
+    Remove-FilesSafe -PathPattern $RemovePattern -ExcludeFullName $exclude
+  }
+
+  return $true
+}
+
+function Compare-VersionState {
+  [CmdletBinding()]
+  param(
+    [version]$InstalledVersion,
+    [version]$InstallerVersion
+  )
+
+  [pscustomobject]@{
+    InstalledVersion = $InstalledVersion
+    InstallerVersion = $InstallerVersion
+    IsInstalled      = [bool]$InstalledVersion
+    UpdateRequired   = [bool]($InstalledVersion -and $InstallerVersion -and ($InstalledVersion -lt $InstallerVersion))
+  }
+}
+
+function Invoke-InstallDecision {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$PSHostPath,
+    [Parameter(Mandatory)][string]$InstallScript,
+    [switch]$InstallationFlag,
+    [switch]$InstallRequired
+  )
+
+  if ($InstallationFlag) {
+    return Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript -PassInstallationFlag
+  }
+
+  if ($InstallRequired) {
+    return Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript
+  }
+
+  return $false
+}
