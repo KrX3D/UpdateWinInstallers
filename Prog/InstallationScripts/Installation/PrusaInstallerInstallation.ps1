@@ -81,7 +81,7 @@ Write_LogEntry -Message ('Gefundene Prusa Installer-Datei: ' + $($(if ($PrusaFil
 
 if (Test-Path $PrusaFile) {
     Write_LogEntry -Message "Starte PrusaSlicer Installer: $($PrusaFile)" -Level "INFO"
-	Start-Process -FilePath $PrusaFile -ArgumentList "/exenoui /exenoupdates /silent /norestart" -Wait
+	[void](Invoke-InstallerFile -FilePath $PrusaFile -Arguments "/exenoui /exenoupdates /silent /norestart" -Wait)
     Write_LogEntry -Message "PrusaSlicer Installer ausgeführt: $($PrusaFile)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Kein PrusaSlicer Installer gefunden mit Pattern $($PrusaPath)" -Level "WARNING"

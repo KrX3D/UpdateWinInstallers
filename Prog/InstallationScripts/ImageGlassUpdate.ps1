@@ -169,7 +169,7 @@ if ($releaseInfo) {
                 # pass headers if needed (User-Agent already included above)
                 if ($headers.ContainsKey('User-Agent')) { $wc.Headers.Add('user-agent', $headers['User-Agent']) }
                 if ($headers.ContainsKey('Authorization')) { $wc.Headers.Add('Authorization', $headers['Authorization']) }
-                $wc.DownloadFile($downloadUrl, $tempPath)
+                [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $tempPath)
                 $wc.Dispose()
                 Write_LogEntry -Message "Temp-Download abgeschlossen: $($tempPath)" -Level "DEBUG"
                 $downloadSucceeded = Test-Path -Path $tempPath
