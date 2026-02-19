@@ -206,7 +206,7 @@ if ($needDownload -and $selectedAsset) {
         if ($headers.ContainsKey('User-Agent')) { $wc.Headers.Add('User-Agent', $headers['User-Agent']) }
         if ($headers.ContainsKey('Authorization')) { $wc.Headers.Add('Authorization', $headers['Authorization']) }
         Write_LogEntry -Message "Starte Download von $($downloadURL) nach $($tempPath)" -Level "INFO"
-        $wc.DownloadFile($downloadURL, $tempPath)
+        [void](Invoke-DownloadFile -Url $downloadURL -OutFile $tempPath)
         $wc.Dispose()
         $downloadOk = Test-Path -Path $tempPath
         Write_LogEntry -Message "Download abgeschlossen; temp existiert: $($downloadOk)" -Level "DEBUG"

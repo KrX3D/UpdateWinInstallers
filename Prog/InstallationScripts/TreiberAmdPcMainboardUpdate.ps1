@@ -1024,7 +1024,7 @@ extractASUSDrivers(model, os).then(() => {
 				Write_LogEntry -Message "BitsTransfer abgeschlossen: $($downloadPath)" -Level "INFO"
 			} else {
 				$webClient = New-Object System.Net.WebClient
-				$webClient.DownloadFile($downloadUrl, $downloadPath)
+				[void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
 				$webClient.Dispose()
 				Write_LogEntry -Message "WebClient-Download abgeschlossen: $($downloadPath)" -Level "INFO"
 			}

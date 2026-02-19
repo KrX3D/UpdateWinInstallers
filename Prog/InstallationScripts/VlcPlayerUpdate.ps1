@@ -146,14 +146,14 @@ function CheckVLCVersion {
             $webClient.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PowerShell WebClient"
             $webClient.Proxy = [System.Net.WebRequest]::DefaultWebProxy
             $webClient.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-            $webClient.DownloadFile($downloadUrl, $downloadPath)
+            [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
             Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message "Fehler beim Download $($downloadUrl): $($_)" -Level "ERROR"
             Write_LogEntry -Message "Versuche HTTPS erneut ohne Proxy (direkte Verbindung)..." -Level "WARNING"
             try {
                 $webClient.Proxy = $null
-                $webClient.DownloadFile($downloadUrl, $downloadPath)
+                [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
                 Write_LogEntry -Message "Download ohne Proxy abgeschlossen: $($downloadPath)" -Level "SUCCESS"
             } catch {
                 Write_LogEntry -Message "HTTPS ohne Proxy fehlgeschlagen $($downloadUrl): $($_)" -Level "ERROR"
@@ -163,7 +163,7 @@ function CheckVLCVersion {
             Write_LogEntry -Message "HTTP-URL: $($httpDownloadUrl)" -Level "DEBUG"
             try {
                 $webClient.Proxy = $null
-                $webClient.DownloadFile($httpDownloadUrl, $downloadPath)
+                [void](Invoke-DownloadFile -Url $httpDownloadUrl -OutFile $downloadPath)
                 Write_LogEntry -Message "Download über HTTP abgeschlossen: $($downloadPath)" -Level "SUCCESS"
             } catch {
                 Write_LogEntry -Message "HTTP-Download fehlgeschlagen $($httpDownloadUrl): $($_)" -Level "ERROR"

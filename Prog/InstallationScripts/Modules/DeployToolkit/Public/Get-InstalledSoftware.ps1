@@ -8,7 +8,15 @@
     'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
   )
 
+  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+    Write_LogEntry -Message "Durchsuche Registry-Pfade nach installierten Programmen..." -Level "DEBUG"
+  }
+
   $results = foreach ($p in $paths) {
+    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+      Write_LogEntry -Message "Prüfe Registry-Pfad: $p" -Level "DEBUG"
+    }
+
     if (Test-Path $p) {
       Get-ChildItem $p -ErrorAction SilentlyContinue |
         Get-ItemProperty -ErrorAction SilentlyContinue |

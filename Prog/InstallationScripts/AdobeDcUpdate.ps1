@@ -114,7 +114,7 @@ if ($installerFile) {
                 try {
                     #Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
                     $webClient = New-Object System.Net.WebClient
-                    $webClient.DownloadFile($downloadUrl, $downloadPath)
+                    [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
                     $webClient.Dispose()
                     Write_LogEntry -Message "Download-Versuch ausgeführt: $downloadUrl -> $downloadPath" -Level "DEBUG"
 
