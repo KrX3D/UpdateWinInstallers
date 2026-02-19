@@ -187,7 +187,7 @@ if (!$skipDownload) {
                                 } else {
                                     Write_LogEntry -Message "7-Zip nicht gefunden, verwende alternative Methode" -Level "WARNING"
                                     # Alternative: try to run the EXE with silent extraction parameters
-                                    Start-Process -FilePath $tempExePath -ArgumentList "/S", "/D=$extractFolder" -Wait -NoNewWindow
+                                    [void](Invoke-InstallerFile -FilePath $tempExePath -Arguments "/S", "/D=$extractFolder" -Wait)
                                 }
                                 
                                 # Find the MSI file in the x64 folder

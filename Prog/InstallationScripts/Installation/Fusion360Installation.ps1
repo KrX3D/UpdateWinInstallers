@@ -78,7 +78,7 @@ function InstallFusion(){
     
 	# Install Autodesk Fusion
     Write_LogEntry -Message "InstallFusion: Starte Installer $($Installer) mit Argument '--globalinstall' (Wait)" -Level "INFO"
-    Start-Process -FilePath $Installer -ArgumentList '--globalinstall' -Wait
+    [void](Invoke-InstallerFile -FilePath $Installer -Arguments '--globalinstall' -Wait)
     Write_LogEntry -Message "InstallFusion: Installer beendet: $($Installer)" -Level "INFO"
 
 	$localVersion = Get-LocalVersion
@@ -141,7 +141,7 @@ function InstallFusion(){
 		ForEach ($ProjInstaller in $projSaInstallers) {
             Write-Host "    Installiere: $($ProjInstaller.Name)" -ForegroundColor Cyan
             Write_LogEntry -Message "InstallFusion: Starte ProjectSalvador Installer: $($ProjInstaller.FullName)" -Level "INFO"
-			Start-Process -FilePath $ProjInstaller.FullName -ArgumentList '/quiet /norestart' -Wait
+			[void](Invoke-InstallerFile -FilePath $ProjInstaller.FullName -Arguments '/quiet /norestart' -Wait)
             Write_LogEntry -Message "InstallFusion: ProjectSalvador Installation beendet: $($ProjInstaller.FullName)" -Level "SUCCESS"
 		}
     } else {
