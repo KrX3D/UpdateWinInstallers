@@ -76,8 +76,7 @@ if ($installerFile) {
     $webPageUrl = "https://it-blogger.net/adobe-reader-offline-installer-fuer-windows-und-macos/"
     $latestVersionPattern = 'Adobe Acrobat Reader 64-bit Version (\d+\.\d+\.\d+).*?Windows'
 
-    Write_LogEntry -Message "Starte Abruf der Webseite für Versionsprüfung: $webPageUrl" -Level "DEBUG"
-    $onlineInfo = Get-OnlineVersionInfo -Url $webPageUrl -Regex $latestVersionPattern -Transform { param($v) if ($v) { $v -replace '\.' -replace '^..' } else { $null } }
+    $onlineInfo = Get-OnlineVersionInfo -Url $webPageUrl -Regex $latestVersionPattern -Context $ProgramName -Transform { param($v) if ($v) { $v -replace '\.' -replace '^..' } else { $null } }
 
     if ($onlineInfo.Content) {
         Write_LogEntry -Message "Webseite für Versionsprüfung abgerufen: $webPageUrl" -Level "DEBUG"
@@ -100,8 +99,8 @@ if ($installerFile) {
                 Write_LogEntry -Message "Download URL konstruiert: $downloadUrl" -Level "DEBUG"
                 Write_LogEntry -Message "Download Pfad gesetzt: $downloadPath" -Level "DEBUG"
 
-                $downloadOk = Invoke-InstallerDownload -Url $downloadUrl -OutFile $downloadPath
-                if ($downloadOk -and (Resolve-DownloadedInstaller -DownloadedFile $downloadPath -RemovePattern $installerPath -ReplaceOld)) {
+                $downloadOk = Invoke-InstallerDownload -Url $downloadUrl -OutFile $downloadPath -Context $ProgramName
+                if ($downloadOk -and (Resolve-DownloadedInstaller -DownloadedFile $downloadPath -RemovePattern $installerPath -ReplaceOld -Context $ProgramName)) {
                     Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor "Green"
                     Write_LogEntry -Message "$ProgramName wurde aktualisiert: $downloadPath" -Level "SUCCESS"
                 } else {
@@ -148,7 +147,7 @@ if ($installedVersion) {
     Write_LogEntry -Message "$ProgramName wurde nicht in der Registrierung gefunden. Setze Install=false" -Level "DEBUG"
 }
 
-$state = Compare-VersionState -InstalledVersion $installedVersion -InstallerVersion $localVersionObj
+$state = Compare-VersionState -InstalledVersion $installedVersion -InstallerVersion $localVersionObj -Context $ProgramName
 if ($state.UpdateRequired) {
     Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor "magenta"
     Write_LogEntry -Message "Veraltete Version erkannt. Update wird gestartet." -Level "INFO"
@@ -158,17 +157,7 @@ Write-Host ""
 #Install if needed
 
 $installScript = "$Serverip\Daten\Prog\InstallationScripts\Installation\AdobeDcInstall.ps1"
-$started = Invoke-InstallDecision -PSHostPath $PSHostPath -InstallScript $installScript -InstallationFlag:$InstallationFlag -InstallRequired:$state.UpdateRequired
-if ($InstallationFlag) {
-    Write_LogEntry -Message "InstallationFlag gesetzt - starte Installationsskript mit -InstallationFlag" -Level "INFO"
-} elseif ($state.UpdateRequired) {
-    Write_LogEntry -Message "Install erforderlich - starte Installationsskript" -Level "INFO"
-} else {
-    Write_LogEntry -Message "Keine Installation oder Update erforderlich." -Level "INFO"
-}
-if (($InstallationFlag -or $state.UpdateRequired) -and -not $started) {
-    Write_LogEntry -Message "Installationsskript konnte nicht gestartet werden: $installScript" -Level "ERROR"
-}
+$started = Invoke-InstallDecision -PSHostPath $PSHostPath -InstallScript $installScript -InstallationFlag:$InstallationFlag -InstallRequired:$state.UpdateRequired -Context $ProgramName
 Write-Host ""
 
 # === Logger-Footer: automatisch eingefügt ===

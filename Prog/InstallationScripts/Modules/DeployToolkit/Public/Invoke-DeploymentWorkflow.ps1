@@ -212,17 +212,29 @@ function Get-OnlineVersionInfo {
     [Parameter(Mandatory)][string]$Regex,
     [int]$RegexGroup = 1,
     [scriptblock]$Transform,
-    [switch]$SelectLast
+    [switch]$SelectLast,
+    [string]$Context = 'OnlineVersion'
   )
+
+  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+    Write_LogEntry -Message "[$Context] Abruf gestartet: $Url" -Level "DEBUG"
+  }
 
   $content = Invoke-WebRequestCompat -Uri $Url -ReturnContent
   if (-not $content) {
+    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+      Write_LogEntry -Message "[$Context] Abruf fehlgeschlagen: $Url" -Level "ERROR"
+    }
     return [pscustomobject]@{ Url = $Url; Content = $null; Version = $null }
   }
 
   $version = Get-OnlineVersionFromContent -Content $content -Regex $Regex -RegexGroup $RegexGroup -SelectLast:$SelectLast
   if ($Transform) {
     $version = & $Transform $version
+  }
+
+  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+    Write_LogEntry -Message "[$Context] Abruf erfolgreich, Version: $version" -Level "DEBUG"
   }
 
   [pscustomobject]@{ Url = $Url; Content = $content; Version = $version }
@@ -233,14 +245,30 @@ function Invoke-InstallerDownload {
   param(
     [Parameter(Mandatory)][string]$Url,
     [Parameter(Mandatory)][string]$OutFile,
-    [System.Net.SecurityProtocolType]$SecurityProtocol
+    [System.Net.SecurityProtocolType]$SecurityProtocol,
+    [string]$Context = 'Download'
   )
 
-  if ($PSBoundParameters.ContainsKey('SecurityProtocol')) {
-    return Invoke-DownloadFile -Url $Url -OutFile $OutFile -SecurityProtocol $SecurityProtocol
+  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+    Write_LogEntry -Message "[$Context] Download startet: $Url -> $OutFile" -Level "DEBUG"
   }
 
-  return Invoke-DownloadFile -Url $Url -OutFile $OutFile
+  $ok = $false
+  if ($PSBoundParameters.ContainsKey('SecurityProtocol')) {
+    $ok = Invoke-DownloadFile -Url $Url -OutFile $OutFile -SecurityProtocol $SecurityProtocol
+  } else {
+    $ok = Invoke-DownloadFile -Url $Url -OutFile $OutFile
+  }
+
+  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+    if ($ok) {
+      Write_LogEntry -Message "[$Context] Download erfolgreich: $OutFile" -Level "SUCCESS"
+    } else {
+      Write_LogEntry -Message "[$Context] Download fehlgeschlagen: $OutFile" -Level "ERROR"
+    }
+  }
+
+  return $ok
 }
 
 function Resolve-DownloadedInstaller {
@@ -249,16 +277,30 @@ function Resolve-DownloadedInstaller {
     [Parameter(Mandatory)][string]$DownloadedFile,
     [string]$RemovePattern,
     [switch]$ReplaceOld,
-    [string[]]$KeepFiles
+    [string[]]$KeepFiles,
+    [string]$Context = 'Download'
   )
 
-  if (-not (Test-Path -LiteralPath $DownloadedFile)) { return $false }
-  if ((Get-Item -LiteralPath $DownloadedFile).Length -le 0) { return $false }
+  if (-not (Test-Path -LiteralPath $DownloadedFile)) {
+    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+      Write_LogEntry -Message "[$Context] Datei fehlt nach Download: $DownloadedFile" -Level "ERROR"
+    }
+    return $false
+  }
+  if ((Get-Item -LiteralPath $DownloadedFile).Length -le 0) {
+    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+      Write_LogEntry -Message "[$Context] Datei ist leer: $DownloadedFile" -Level "ERROR"
+    }
+    return $false
+  }
 
   if ($ReplaceOld -and $RemovePattern) {
     $exclude = @($DownloadedFile)
     if ($KeepFiles) { $exclude += $KeepFiles }
     Remove-FilesSafe -PathPattern $RemovePattern -ExcludeFullName $exclude
+    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+      Write_LogEntry -Message "[$Context] Alte Installer bereinigt über Pattern: $RemovePattern" -Level "INFO"
+    }
   }
 
   return $true
@@ -268,8 +310,13 @@ function Compare-VersionState {
   [CmdletBinding()]
   param(
     [version]$InstalledVersion,
-    [version]$InstallerVersion
+    [version]$InstallerVersion,
+    [string]$Context = 'VersionCompare'
   )
+
+  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+    Write_LogEntry -Message "[$Context] Installed=$InstalledVersion | Installer=$InstallerVersion" -Level "INFO"
+  }
 
   [pscustomobject]@{
     InstalledVersion = $InstalledVersion
@@ -285,15 +332,34 @@ function Invoke-InstallDecision {
     [Parameter(Mandatory)][string]$PSHostPath,
     [Parameter(Mandatory)][string]$InstallScript,
     [switch]$InstallationFlag,
-    [switch]$InstallRequired
+    [switch]$InstallRequired,
+    [string]$Context = 'InstallDecision'
   )
 
   if ($InstallationFlag) {
-    return Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript -PassInstallationFlag
+    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+      Write_LogEntry -Message "[$Context] InstallationFlag gesetzt, starte: $InstallScript" -Level "INFO"
+    }
+    $ok = Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript -PassInstallationFlag
+    if ((-not $ok) -and (Get-Command Write_LogEntry -ErrorAction SilentlyContinue)) {
+      Write_LogEntry -Message "[$Context] Installationsskript konnte nicht gestartet werden: $InstallScript" -Level "ERROR"
+    }
+    return $ok
   }
 
   if ($InstallRequired) {
-    return Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript
+    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+      Write_LogEntry -Message "[$Context] Update erforderlich, starte: $InstallScript" -Level "INFO"
+    }
+    $ok = Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript
+    if ((-not $ok) -and (Get-Command Write_LogEntry -ErrorAction SilentlyContinue)) {
+      Write_LogEntry -Message "[$Context] Installationsskript konnte nicht gestartet werden: $InstallScript" -Level "ERROR"
+    }
+    return $ok
+  }
+
+  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
+    Write_LogEntry -Message "[$Context] Keine Installation erforderlich" -Level "INFO"
   }
 
   return $false
