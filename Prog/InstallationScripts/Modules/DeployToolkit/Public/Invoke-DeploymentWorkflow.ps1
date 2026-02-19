@@ -216,15 +216,11 @@ function Get-OnlineVersionInfo {
     [string]$Context = 'OnlineVersion'
   )
 
-  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "[$Context] Abruf gestartet: $Url" -Level "DEBUG"
-  }
+  Write-DeployLog -Message "[$Context] Abruf gestartet: $Url" -Level 'DEBUG'
 
   $content = Invoke-WebRequestCompat -Uri $Url -ReturnContent
   if (-not $content) {
-    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-      Write_LogEntry -Message "[$Context] Abruf fehlgeschlagen: $Url" -Level "ERROR"
-    }
+    Write-DeployLog -Message "[$Context] Abruf fehlgeschlagen: $Url" -Level 'ERROR'
     return [pscustomobject]@{ Url = $Url; Content = $null; Version = $null }
   }
 
@@ -233,9 +229,7 @@ function Get-OnlineVersionInfo {
     $version = & $Transform $version
   }
 
-  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "[$Context] Abruf erfolgreich, Version: $version" -Level "DEBUG"
-  }
+  Write-DeployLog -Message "[$Context] Abruf erfolgreich, Version: $version" -Level 'DEBUG'
 
   [pscustomobject]@{ Url = $Url; Content = $content; Version = $version }
 }
@@ -249,9 +243,7 @@ function Invoke-InstallerDownload {
     [string]$Context = 'Download'
   )
 
-  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "[$Context] Download startet: $Url -> $OutFile" -Level "DEBUG"
-  }
+  Write-DeployLog -Message "[$Context] Download startet: $Url -> $OutFile" -Level 'DEBUG'
 
   $ok = $false
   if ($PSBoundParameters.ContainsKey('SecurityProtocol')) {
@@ -260,12 +252,10 @@ function Invoke-InstallerDownload {
     $ok = Invoke-DownloadFile -Url $Url -OutFile $OutFile
   }
 
-  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-    if ($ok) {
-      Write_LogEntry -Message "[$Context] Download erfolgreich: $OutFile" -Level "SUCCESS"
-    } else {
-      Write_LogEntry -Message "[$Context] Download fehlgeschlagen: $OutFile" -Level "ERROR"
-    }
+  if ($ok) {
+    Write-DeployLog -Message "[$Context] Download erfolgreich: $OutFile" -Level 'SUCCESS'
+  } else {
+    Write-DeployLog -Message "[$Context] Download fehlgeschlagen: $OutFile" -Level 'ERROR'
   }
 
   return $ok
@@ -282,15 +272,11 @@ function Resolve-DownloadedInstaller {
   )
 
   if (-not (Test-Path -LiteralPath $DownloadedFile)) {
-    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-      Write_LogEntry -Message "[$Context] Datei fehlt nach Download: $DownloadedFile" -Level "ERROR"
-    }
+    Write-DeployLog -Message "[$Context] Datei fehlt nach Download: $DownloadedFile" -Level 'ERROR'
     return $false
   }
   if ((Get-Item -LiteralPath $DownloadedFile).Length -le 0) {
-    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-      Write_LogEntry -Message "[$Context] Datei ist leer: $DownloadedFile" -Level "ERROR"
-    }
+    Write-DeployLog -Message "[$Context] Datei ist leer: $DownloadedFile" -Level 'ERROR'
     return $false
   }
 
@@ -298,9 +284,7 @@ function Resolve-DownloadedInstaller {
     $exclude = @($DownloadedFile)
     if ($KeepFiles) { $exclude += $KeepFiles }
     Remove-FilesSafe -PathPattern $RemovePattern -ExcludeFullName $exclude
-    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-      Write_LogEntry -Message "[$Context] Alte Installer bereinigt über Pattern: $RemovePattern" -Level "INFO"
-    }
+    Write-DeployLog -Message "[$Context] Alte Installer bereinigt über Pattern: $RemovePattern" -Level 'INFO'
   }
 
   return $true
@@ -314,9 +298,7 @@ function Compare-VersionState {
     [string]$Context = 'VersionCompare'
   )
 
-  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "[$Context] Installed=$InstalledVersion | Installer=$InstallerVersion" -Level "INFO"
-  }
+  Write-DeployLog -Message "[$Context] Installed=$InstalledVersion | Installer=$InstallerVersion" -Level 'INFO'
 
   [pscustomobject]@{
     InstalledVersion = $InstalledVersion
@@ -337,30 +319,24 @@ function Invoke-InstallDecision {
   )
 
   if ($InstallationFlag) {
-    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-      Write_LogEntry -Message "[$Context] InstallationFlag gesetzt, starte: $InstallScript" -Level "INFO"
-    }
+    Write-DeployLog -Message "[$Context] InstallationFlag gesetzt, starte: $InstallScript" -Level 'INFO'
     $ok = Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript -PassInstallationFlag
-    if ((-not $ok) -and (Get-Command Write_LogEntry -ErrorAction SilentlyContinue)) {
-      Write_LogEntry -Message "[$Context] Installationsskript konnte nicht gestartet werden: $InstallScript" -Level "ERROR"
+    if (-not $ok) {
+      Write-DeployLog -Message "[$Context] Installationsskript konnte nicht gestartet werden: $InstallScript" -Level 'ERROR'
     }
     return $ok
   }
 
   if ($InstallRequired) {
-    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-      Write_LogEntry -Message "[$Context] Update erforderlich, starte: $InstallScript" -Level "INFO"
-    }
+    Write-DeployLog -Message "[$Context] Update erforderlich, starte: $InstallScript" -Level 'INFO'
     $ok = Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript
-    if ((-not $ok) -and (Get-Command Write_LogEntry -ErrorAction SilentlyContinue)) {
-      Write_LogEntry -Message "[$Context] Installationsskript konnte nicht gestartet werden: $InstallScript" -Level "ERROR"
+    if (-not $ok) {
+      Write-DeployLog -Message "[$Context] Installationsskript konnte nicht gestartet werden: $InstallScript" -Level 'ERROR'
     }
     return $ok
   }
 
-  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "[$Context] Keine Installation erforderlich" -Level "INFO"
-  }
+  Write-DeployLog -Message "[$Context] Keine Installation erforderlich" -Level 'INFO'
 
   return $false
 }

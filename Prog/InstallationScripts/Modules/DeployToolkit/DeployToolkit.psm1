@@ -42,5 +42,9 @@ Export-ModuleMember -Function @(
   'Invoke-InstallerDownload',
   'Resolve-DownloadedInstaller',
   'Compare-VersionState',
-  'Invoke-InstallDecision'
+  'Invoke-InstallDecision',
+  'Write-DeployLog',
+  'Finalize-DeployContext',
+  'Resolve-SharedConfigPath',
+  'Import-DeployConfig'
 )

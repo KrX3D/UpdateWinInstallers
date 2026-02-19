@@ -5,26 +5,6 @@ param(
 $ProgramName = "Adobe Acrobat"
 $ScriptType = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
-
-if (Test-Path $modulePath) {
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
-
-    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
-        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
-    }
-    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
-
-    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
-        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
-    }
-}
-# === Ende Logger-Header ===
-
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $InstallationFlag" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $ProgramName, ScriptType: $ScriptType" -Level "DEBUG"
-
 # DeployToolkit helpers
 $dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
 if (Test-Path $dtPath) {
@@ -37,19 +17,20 @@ if (Test-Path $dtPath) {
     }
 }
 
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Write_LogEntry -Message "Versuche Konfigurationsdatei zu laden: $configPath" -Level "DEBUG"
+Initialize-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
+Write-DeployLog -Message "Script gestartet mit InstallationFlag: $InstallationFlag" -Level 'INFO'
+Write-DeployLog -Message "ProgramName: $ProgramName, ScriptType: $ScriptType" -Level 'DEBUG'
 
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-    Write_LogEntry -Message "Konfigurationsdatei $($configPath) gefunden und importiert." -Level "INFO"
-} else {
-    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
+try {
+    $config = Import-DeployConfig -ScriptRoot $PSScriptRoot
+    $InstallationFolder = $config.InstallationFolder
+    $Serverip = $config.Serverip
+    $PSHostPath = $config.PSHostPath
+} catch {
     Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    Write_LogEntry -Message "Script beendet wegen fehlender Konfigurationsdatei: $($configPath)" -Level "ERROR"
-    Finalize_LogSession
+    Write-Host "Konfigurationsdatei konnte nicht geladen werden." -ForegroundColor "Red"
+    Write-DeployLog -Message "Script beendet wegen fehlender Konfiguration: $_" -Level 'ERROR'
+    Finalize-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
     exit
 }
 
@@ -160,10 +141,4 @@ $installScript = "$Serverip\Daten\Prog\InstallationScripts\Installation\AdobeDcI
 $started = Invoke-InstallDecision -PSHostPath $PSHostPath -InstallScript $installScript -InstallationFlag:$InstallationFlag -InstallRequired:$state.UpdateRequired -Context $ProgramName
 Write-Host ""
 
-# === Logger-Footer: automatisch eingefügt ===
-if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
-    Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
-} else {
-    Write_LogEntry -Message "$ProgramName - Script beendet" -Level "INFO"
-}
-# === Ende Logger-Footer ===
+Finalize-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
