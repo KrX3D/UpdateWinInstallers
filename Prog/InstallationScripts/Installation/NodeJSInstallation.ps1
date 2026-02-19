@@ -75,7 +75,7 @@ if ($nodeInstallInfo) {
         Write_LogEntry -Message "Starte Deinstallation für $($installation.Name) Version $($installation.Version) mit msiexec Args: $($uninstallArgs)" -Level "INFO"
         Write-Host "    Deinstalliere: $($installation.Name) ($($installation.Version))" -ForegroundColor "Cyan"
         try {
-            Start-Process -FilePath "msiexec.exe" -ArgumentList $uninstallArgs -Wait -ErrorAction Stop
+            [void](Invoke-InstallerFile -FilePath "msiexec.exe" -Arguments $uninstallArgs -Wait)
             Write_LogEntry -Message "Deinstallation erfolgreich für $($installation.Name) (ProductId: $($uninstallId))." -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message "Fehler bei Deinstallation von $($installation.Name) (ProductId: $($uninstallId)): $($_)" -Level "ERROR"
@@ -102,7 +102,7 @@ if ($installer) {
     $installArgs = "/i `"$installer`" /qb /norestart ADDLOCAL=$features REMOVE=$removeFeats"
     Write_LogEntry -Message "Starte msiexec mit Argumenten: $($installArgs)" -Level "INFO"
     try {
-        Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait -ErrorAction Stop
+        [void](Invoke-InstallerFile -FilePath "msiexec.exe" -Arguments $installArgs -Wait)
         Write_LogEntry -Message "Node.js Installer ausgeführt: $($installer)" -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler beim Ausführen des Node.js Installers $($installer): $($_)" -Level "ERROR"

@@ -121,7 +121,7 @@ if (Test-Path $agentFile) {
 
 	#Start-Process -FilePath $agentFile -ArgumentList "/exenoui /exenoupdates /passive /norestart" -Wait
     Write_LogEntry -Message "Starte Agent-Installer: $($agentFile) mit stillen Parametern (Wait)" -Level "INFO"
-	Start-Process -FilePath $agentFile -ArgumentList "/SP- /SILENT /SUPPRESSMESGBOXES /NORESTART" -Wait
+	[void](Invoke-InstallerFile -FilePath $agentFile -Arguments "/SP- /SILENT /SUPPRESSMESGBOXES /NORESTART" -Wait)
     Write_LogEntry -Message "Agent-Installer beendet: $($agentFile)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Agent-Datei nicht gefunden: $($agentPath)" -Level "ERROR"

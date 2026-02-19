@@ -98,7 +98,7 @@ if ($versionMatch.Success) {
         $webClient = New-Object System.Net.WebClient
         try {
             Write_LogEntry -Message "Starte Download von $($downloadLink) nach $($tempFilePath)" -Level "INFO"
-            $webClient.DownloadFile($downloadLink, $tempFilePath)
+            [void](Invoke-DownloadFile -Url $downloadLink -OutFile $tempFilePath)
             Write_LogEntry -Message "Download abgeschlossen: $($tempFilePath)" -Level "DEBUG"
         } catch {
             Write_LogEntry -Message "Fehler beim Herunterladen von $($downloadLink): $($($_.Exception.Message))" -Level "ERROR"

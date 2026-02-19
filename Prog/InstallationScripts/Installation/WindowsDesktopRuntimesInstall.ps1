@@ -66,7 +66,7 @@ if ($exeFilePath) {
     try {
         Write_LogEntry -Message "Starte Installation: Start-Process $($exeFilePath) mit Argumenten '/install','/passive','/norestart' (wartend)" -Level "INFO"
         # Install the program silently
-        Start-Process -FilePath $exeFilePath -ArgumentList "/install", "/passive", "/norestart" -Wait
+        [void](Invoke-InstallerFile -FilePath $exeFilePath -Arguments "/install", "/passive", "/norestart" -Wait)
         Write_LogEntry -Message "Start-Process ausgeführt für $($exeFilePath)." -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler bei der Installation von $($ProgramName): $($_)" -Level "ERROR"

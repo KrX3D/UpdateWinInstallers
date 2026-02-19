@@ -115,7 +115,7 @@ function CheckPuTTYVersion {
         Write_LogEntry -Message "Temporärer Downloadpfad: $($downloadPath)" -Level "DEBUG"
         $webClient = New-Object System.Net.WebClient
         try {
-            $webClient.DownloadFile($downloadLink, $downloadPath)
+            [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
             Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "DEBUG"
         } catch {
             Write_LogEntry -Message "Fehler beim Herunterladen von $($downloadLink): $($_)" -Level "ERROR"

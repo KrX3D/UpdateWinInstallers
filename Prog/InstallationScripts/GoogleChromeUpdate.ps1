@@ -96,7 +96,7 @@ if ($apiResponse.versions -is [array] -and $apiResponse.versions.Length -gt 0) {
         #Invoke-WebRequest -Uri $downloadLink -OutFile $downloadPath		
         Write_LogEntry -Message "Starte Download von $($downloadLink) nach $($downloadPath)" -Level "INFO"
         $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($downloadLink, $downloadPath)
+        [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
         $webClient.Dispose()
         Write_LogEntry -Message "Download abgeschlossen; prüfe Dateiexistenz: $($downloadPath)" -Level "DEBUG"
 		
