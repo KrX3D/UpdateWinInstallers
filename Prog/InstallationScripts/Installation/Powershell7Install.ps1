@@ -64,7 +64,7 @@ Write_LogEntry -Message ("Gefundener PowerShell Installer: " + $(if ($powerShell
 if ($powerShellInstaller) {
     try {
         Write_LogEntry -Message "Starte PowerShell Installer: $($(if ($powerShellInstaller) { $powerShellInstaller.FullName } else { '<none>' })) mit stillen Parametern." -Level "INFO"
-        Start-Process -FilePath $powerShellInstaller.FullName -ArgumentList 'REGISTER_MANIFEST=0', 'ENABLE_PSREMOTING=1', 'ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1', 'ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1', 'ADD_PATH=1', 'DISABLE_TELEMETRY=1', 'ENABLE_MU=0', 'USE_MU=0', '/qn' -Wait
+        [void](Invoke-InstallerFile -FilePath $powerShellInstaller.FullName -Arguments 'REGISTER_MANIFEST=0', 'ENABLE_PSREMOTING=1', 'ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1', 'ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1', 'ADD_PATH=1', 'DISABLE_TELEMETRY=1', 'ENABLE_MU=0', 'USE_MU=0', '/qn' -Wait)
         Write_LogEntry -Message "PowerShell Installer ausgeführt: $($powerShellInstaller.FullName)" -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler beim Ausführen des PowerShell Installers $($(if ($powerShellInstaller) { $powerShellInstaller.FullName } else { '<none>' })): $($_)" -Level "ERROR"

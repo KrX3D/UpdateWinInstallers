@@ -176,7 +176,7 @@ if (-not $latestRelease) {
                             $webClient.Headers.Add("User-Agent", "InstallationScripts/1.0")
                         }
                         Write_LogEntry -Message "Starte Download: $($downloadLink) -> $($downloadPath)" -Level "INFO"
-                        $webClient.DownloadFile($downloadLink, $downloadPath)
+                        [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
                         Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "SUCCESS"
                     } catch {
                         Write_LogEntry -Message "Fehler beim Herunterladen $($downloadLink): $($_)" -Level "ERROR"
