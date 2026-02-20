@@ -151,7 +151,7 @@ foreach ($driver in $DriversToUpdateArray) {
         # Überprüfen, ob die ausführbare Datei im übergeordneten Verzeichnis vorhanden ist
         if (Test-Path $exePath) {
             Write_LogEntry -Message "Ausführbare Datei gefunden: $($exePath). Starte mit Parametern: $($driverAction.Parameters)" -Level "INFO"
-            Start-Process -FilePath $exePath -ArgumentList $driverAction.Parameters -NoNewWindow -Wait
+            [void](Invoke-InstallerFile -FilePath $exePath -Arguments $driverAction.Parameters -Wait)
             Write_LogEntry -Message "Start-Process beendet für: $($exePath)" -Level "SUCCESS"
         } else {
             # Falls nicht im übergeordneten Verzeichnis vorhanden, Unterverzeichnisse durchsuchen
@@ -166,7 +166,7 @@ foreach ($driver in $DriversToUpdateArray) {
             
             if ($exeInSubDir) {
                 Write_LogEntry -Message "Ausführbare Datei im Unterverzeichnis gefunden: $($exeInSubDir). Starte mit Parametern: $($driverAction.Parameters)" -Level "INFO"
-                Start-Process -FilePath $exeInSubDir -ArgumentList $driverAction.Parameters -NoNewWindow -Wait
+                [void](Invoke-InstallerFile -FilePath $exeInSubDir -Arguments $driverAction.Parameters -Wait)
                 Write_LogEntry -Message "Start-Process beendet für: $($exeInSubDir)" -Level "SUCCESS"
             } else {
                 Write_LogEntry -Message "Keine ausführbare Datei gefunden für $($driver.DriverName) im Pfad $($driver.DirectoryPath)" -Level "WARNING"
@@ -178,7 +178,7 @@ foreach ($driver in $DriversToUpdateArray) {
 	if ($driverAction.UsePnputil) {
 		Write_LogEntry -Message "Führe pnputil für $($driver.DriverName) aus in $($driver.DirectoryPath)" -Level "INFO"
 		#Write-Host "pnputil.exe wird ausgeführt für $($driver.DriverName) unter $($driver.DirectoryPath)"
-		Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnputil.exe /add-driver $($driver.DirectoryPath)\*.inf /install /subdirs > nul 2>&1" -NoNewWindow -Wait
+		[void](Invoke-InstallerFile -FilePath "cmd.exe" -Arguments "/c", "pnputil.exe /add-driver $($driver.DirectoryPath)\*.inf /install /subdirs > nul 2>&1" -Wait)
 		Write_LogEntry -Message "pnputil-Aufruf beendet für $($driver.DriverName)" -Level "SUCCESS"
 	}
 

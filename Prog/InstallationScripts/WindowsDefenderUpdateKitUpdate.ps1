@@ -146,7 +146,7 @@ if (Test-Path $xmlFilePath) {
             $tempFilePath = Join-Path $env:TEMP "defender-update-kit-x64.cab"
             #Invoke-WebRequest -Uri $downloadLink -OutFile $tempFilePath
 			$webClient = New-Object System.Net.WebClient
-			$webClient.DownloadFile($downloadLink, $tempFilePath)
+			[void](Invoke-DownloadFile -Url $downloadLink -OutFile $tempFilePath)
 			$webClient.Dispose()
 
             # Remove old files from the defender-update-kit-x64 folder

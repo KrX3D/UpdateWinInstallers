@@ -61,7 +61,7 @@ $msiFiles = Get-ChildItem -Path "$Serverip\Daten\Treiber\FiiO_Verstarker\FiiO_v*
 Write_LogEntry -Message "Gefundene MSI-Dateien: $($($msiFiles).Count) im Pfad '$($Serverip)\Daten\Treiber\FiiO_Verstarker\'" -Level "DEBUG"
 foreach ($msiFile in $msiFiles) {
 	Write_LogEntry -Message "Starte MSI-Installation: $($msiFile.FullName)" -Level "INFO"
-	Start-Process -FilePath $msiFile.FullName -ArgumentList "/qn", "/passive", "/norestart" -Wait
+	[void](Invoke-InstallerFile -FilePath $msiFile.FullName -Arguments "/qn", "/passive", "/norestart" -Wait)
 	Write_LogEntry -Message "MSI-Installation beendet: $($msiFile.FullName)" -Level "SUCCESS"
 }
 
@@ -71,7 +71,7 @@ Write_LogEntry -Message "Gefundene dpinst64.exe Dateien: $($($dpinstFiles).Count
 Write-Host "FiiO USB Treiber wird installiert" -foregroundcolor "magenta"
 foreach ($dpinstFile in $dpinstFiles) {
 	Write_LogEntry -Message "Starte dpinst: $($dpinstFile.FullName)" -Level "INFO"
-	Start-Process -FilePath $dpinstFile.FullName -ArgumentList "/S", "/F", "/SE", "/SA", "/SW" -Wait
+	[void](Invoke-InstallerFile -FilePath $dpinstFile.FullName -Arguments "/S", "/F", "/SE", "/SA", "/SW" -Wait)
 	Write_LogEntry -Message "dpinst beendet: $($dpinstFile.FullName)" -Level "SUCCESS"
 }
 

@@ -154,7 +154,7 @@ if (!$skipDownload) {
                     try {
                         Write_LogEntry -Message "Starte Download von $downloadUrl..." -Level "INFO"
                         $webClient = New-Object System.Net.WebClient
-                        $webClient.DownloadFile($downloadUrl, $tempExePath)
+                        [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $tempExePath)
                         $webClient.Dispose()
                         Write_LogEntry -Message "Download erfolgreich abgeschlossen" -Level "SUCCESS"
                     } catch {
@@ -187,7 +187,7 @@ if (!$skipDownload) {
                                 } else {
                                     Write_LogEntry -Message "7-Zip nicht gefunden, verwende alternative Methode" -Level "WARNING"
                                     # Alternative: try to run the EXE with silent extraction parameters
-                                    Start-Process -FilePath $tempExePath -ArgumentList "/S", "/D=$extractFolder" -Wait -NoNewWindow
+                                    [void](Invoke-InstallerFile -FilePath $tempExePath -Arguments "/S", "/D=$extractFolder" -Wait)
                                 }
                                 
                                 # Find the MSI file in the x64 folder
