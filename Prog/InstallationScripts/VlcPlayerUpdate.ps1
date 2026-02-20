@@ -1,26 +1,15 @@
-param(
+﻿param(
     [switch]$InstallationFlag = $false
 )
 
 $ProgramName = "VLC"
 $ScriptType  = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
+$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
+Import-Module $dtPath -Force -ErrorAction Stop
 
-if (Test-Path $modulePath) {
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
-
-    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
-        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
-    }
-    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
-
-    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
-        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
-    }
-}
-# === Ende Logger-Header ===
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
@@ -33,19 +22,10 @@ if (-not (Test-Path $dtPath)) {
 }
 Import-Module -Name $dtPath -Force -ErrorAction Stop
 
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
-
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-    Write_LogEntry -Message "Konfigurationsdatei geladen: $($configPath)" -Level "INFO"
-} else {
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
-    exit
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 # Function to parse the version number from the filename
 function ParseVersion {
@@ -146,14 +126,14 @@ function CheckVLCVersion {
             $webClient.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PowerShell WebClient"
             $webClient.Proxy = [System.Net.WebRequest]::DefaultWebProxy
             $webClient.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-            $webClient.DownloadFile($downloadUrl, $downloadPath)
+            [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
             Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message "Fehler beim Download $($downloadUrl): $($_)" -Level "ERROR"
             Write_LogEntry -Message "Versuche HTTPS erneut ohne Proxy (direkte Verbindung)..." -Level "WARNING"
             try {
                 $webClient.Proxy = $null
-                $webClient.DownloadFile($downloadUrl, $downloadPath)
+                [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
                 Write_LogEntry -Message "Download ohne Proxy abgeschlossen: $($downloadPath)" -Level "SUCCESS"
             } catch {
                 Write_LogEntry -Message "HTTPS ohne Proxy fehlgeschlagen $($downloadUrl): $($_)" -Level "ERROR"
@@ -163,7 +143,7 @@ function CheckVLCVersion {
             Write_LogEntry -Message "HTTP-URL: $($httpDownloadUrl)" -Level "DEBUG"
             try {
                 $webClient.Proxy = $null
-                $webClient.DownloadFile($httpDownloadUrl, $downloadPath)
+                [void](Invoke-DownloadFile -Url $httpDownloadUrl -OutFile $downloadPath)
                 Write_LogEntry -Message "Download über HTTP abgeschlossen: $($downloadPath)" -Level "SUCCESS"
             } catch {
                 Write_LogEntry -Message "HTTP-Download fehlgeschlagen $($httpDownloadUrl): $($_)" -Level "ERROR"
@@ -196,7 +176,7 @@ function CheckVLCVersion {
 }
 
 # Get the latest VLC Player installer file in the directory
-$latestInstaller = Get-ChildItem -Path $InstallationFolder -Filter "vlc-*-win64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$latestInstaller = Get-InstallerFilePath -Directory $InstallationFolder -Filter "vlc-*-win64.exe"
 
 if ($latestInstaller) {
     Write_LogEntry -Message "Gefundene lokale Installer-Datei: $($latestInstaller.FullName)" -Level "DEBUG"
@@ -221,7 +201,7 @@ if ($latestInstaller) {
 Write-Host ""
 
 #Check Installed Version / Install if neded
-$FoundFile = Get-ChildItem -Path $InstallationFolder -Filter "vlc-*-win64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$FoundFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter "vlc-*-win64.exe"
 if ($FoundFile) {
     Write_LogEntry -Message "Gefundene Installationsdatei für nachfolgende Prüfungen: $($FoundFile.FullName)" -Level "DEBUG"
     $InstallationFileName = $FoundFile.Name
@@ -281,10 +261,4 @@ if ($InstallationFlag) {
 Write-Host ""
 Write_LogEntry -Message "Script-Ende erreicht." -Level "INFO"
 
-# === Logger-Footer: automatisch eingefügt ===
-if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
-    Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
-} else {
-    Write_LogEntry -Message "$ProgramName - Script beendet" -Level "INFO"
-}
-# === Ende Logger-Footer ===
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
