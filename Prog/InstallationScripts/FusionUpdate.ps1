@@ -116,7 +116,7 @@ function Compare-Versions($local, $online) {
 function Download-And-Replace {
     try {
         Write_LogEntry -Message "Download-And-Replace: Starte Download von $($DownloadUrl) nach $($TempDownloadPath)" -Level "INFO"
-        Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempDownloadPath -UseBasicParsing -AllowInsecureRedirect
+        [void](Invoke-DownloadFile -Url $DownloadUrl -OutFile $TempDownloadPath)
         Write_LogEntry -Message "Download-And-Replace: Download beendet. Prüfe Existenz: $($TempDownloadPath)" -Level "DEBUG"
     } catch {
         Write_LogEntry -Message "Download-And-Replace: Download fehlgeschlagen: $($_)" -Level "ERROR"
