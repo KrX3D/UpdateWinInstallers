@@ -16,20 +16,11 @@ function Log {
   Write_LogEntry -Message $Message -Level $Level
 }
 
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Log "Lade Konfigurationsdatei von: $configPath" "INFO"
-
-try {
-  $config = Import-SharedConfig -ConfigPath $configPath
-  $InstallationFolder = $config.InstallationFolder
-  $Serverip = $config.Serverip
-  $PSHostPath = $config.PSHostPath
-  Log "Konfigurationsdatei $configPath gefunden und importiert." "INFO"
-} catch {
-  Log "Konfigurationsdatei konnte nicht geladen werden: $_" "ERROR"
-  Finalize_LogSession -FinalizeMessage "Abbruch: Config fehlt"
-  exit 1
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
+Log "Konfigurationsdatei importiert (DeployToolkit)." "INFO"
 
 $downloadPageUrl = "https://www.7-zip.org/download.html"
 $localPattern = Join-Path $InstallationFolder "7z*-x64.exe"
@@ -165,4 +156,4 @@ if ($plan.ShouldExecute) {
 }
 
 Write-Host ""
-Finalize_LogSession -FinalizeMessage "7-Zip Update-Script erfolgreich abgeschlossen"
+Stop-DeployContext -FinalizeMessage "7-Zip Update-Script erfolgreich abgeschlossen"
