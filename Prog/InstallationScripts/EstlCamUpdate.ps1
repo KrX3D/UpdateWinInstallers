@@ -143,7 +143,7 @@ if ($latestFile) {
 				#Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
 				Write_LogEntry -Message "Starte Download von $($downloadUrl) nach $($downloadPath)" -Level "INFO"
 				$webClient = New-Object System.Net.WebClient
-	            $webClient.DownloadFile($downloadUrl, $downloadPath)
+	            [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
 	            $webClient.Dispose()
 	            Write_LogEntry -Message "Download abgeschlossen." -Level "SUCCESS"
 	        }
