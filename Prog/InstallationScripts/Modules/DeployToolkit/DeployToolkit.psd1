@@ -7,7 +7,7 @@
   Description       = 'Shared helpers for update/install scripts (logger init, config import, version parsing, downloads, registry checks).'
   PowerShellVersion = '5.1'
   FunctionsToExport = @(
-    'Initialize-DeployContext',
+    'Start-DeployContext',
     'Import-SharedConfig',
     'Invoke-DownloadFile',
     'Get-InstalledSoftware',

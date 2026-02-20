@@ -261,7 +261,7 @@ if ($latestRelease) {
             $wc = New-Object System.Net.WebClient
             $wc.Headers.Add("user-agent", $headers['User-Agent'])
             if ($headers.ContainsKey('Authorization')) { $wc.Headers.Add("Authorization", $headers['Authorization']) }
-            $wc.DownloadFile($directDownloadUrl, $tempFile)
+            [void](Invoke-DownloadFile -Url $directDownloadUrl -OutFile $tempFile)
             $wc.Dispose()
             Write_LogEntry -Message "Temp-Download abgeschlossen: $($tempFile)" -Level "DEBUG"
         } catch {
