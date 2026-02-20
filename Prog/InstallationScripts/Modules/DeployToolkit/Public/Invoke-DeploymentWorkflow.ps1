@@ -225,7 +225,7 @@ function Get-OnlineVersionInfo {
     return [pscustomobject]@{ Url = $Url; Content = $null; Version = $null }
   }
 
-  $version = Get-OnlineVersionFromContent -Content $content -Regex $Regex -RegexGroup $RegexGroup -SelectLast:$SelectLast -RegexOptions $RegexOptions
+  $version = Get-OnlineVersionFromContent -Content $content -Regex $Regex -RegexGroup $RegexGroup -SelectLast:$SelectLast -ReturnRaw -RegexOptions $RegexOptions
   if ($Transform) {
     $version = & $Transform $version
   }

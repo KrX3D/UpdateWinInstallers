@@ -41,6 +41,7 @@ function Get-OnlineVersionFromContent {
     [int]$RegexGroup = 1,
     [switch]$SelectLast,
     [scriptblock]$Convert,
+    [switch]$ReturnRaw,
     [System.Text.RegularExpressions.RegexOptions]$RegexOptions = ([System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Singleline)
   )
 
@@ -53,6 +54,7 @@ function Get-OnlineVersionFromContent {
     if ([string]::IsNullOrWhiteSpace($raw)) { continue }
 
     if ($Convert) { return (& $Convert $raw) }
+    if ($ReturnRaw) { return $raw }
     return ConvertTo-VersionSafe $raw
   }
 

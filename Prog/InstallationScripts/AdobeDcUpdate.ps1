@@ -56,8 +56,9 @@ if ($installerFile) {
 
     $webPageUrl = "https://it-blogger.net/adobe-reader-offline-installer-fuer-windows-und-macos/"
     $latestVersionPattern = @(
-        'Adobe Acrobat Reader 64-bit Version\s*([0-9\.]+).*?Windows',
-        'AcroRdrDCx64([0-9]{8,10})_de_DE\.exe'
+        'Version\s+([0-9]{4}\.[0-9]{3}\.[0-9]{5})',
+        'AcroRdrDCx64([0-9]{8,10})_(?:de_DE|en_US|MUI)\.exe',
+        'AcroRdrDC([0-9]{8,10})_(?:de_DE|en_US|MUI)\.exe'
     )
 
     $onlineInfo = Get-OnlineVersionInfo -Url $webPageUrl -Regex $latestVersionPattern -Context $ProgramName -Transform {
@@ -72,17 +73,18 @@ if ($installerFile) {
 
     if ($onlineInfo.Content) {
         Write_LogEntry -Message "Webseite für Versionsprüfung abgerufen: $webPageUrl" -Level "DEBUG"
-        Write_LogEntry -Message "Starte Extraktion der Online-Version mit Pattern: $latestVersionPattern" -Level "DEBUG"
+        Write_LogEntry -Message "Starte Extraktion der Online-Version mit Pattern: $($latestVersionPattern -join ' | ')" -Level "DEBUG"
 
         $latestVersion = $onlineInfo.Version
         $latestVersionObj = if ($latestVersion) { Convert-AdobeToVersion $latestVersion } else { $null }
+
+        Write-Host ""
+        Write-Host "Lokale Version: $fileVersion" -ForegroundColor "Cyan"
+        Write-Host "Online Version: $latestVersionObj" -ForegroundColor "Cyan"
+        Write-Host ""
+
         if ($latestVersionObj) {
             Write_LogEntry -Message "Online Version gefunden: $latestVersionObj (raw=$latestVersion)" -Level "DEBUG"
-            Write-Host ""
-            Write-Host "Lokale Version: $fileVersion" -ForegroundColor "Cyan"
-            Write-Host "Online Version: $latestVersionObj" -ForegroundColor "Cyan"
-            Write-Host ""
-
             if ($latestVersionObj -gt $fileVersion) {
                 Write_LogEntry -Message "Neue Version $latestVersionObj verfügbar. Starte Download." -Level "INFO"
 
@@ -105,6 +107,7 @@ if ($installerFile) {
                 Write_LogEntry -Message "Kein Online Update verfügbar. Lokale Version $fileVersion ist aktuell." -Level "INFO"
             }
         } else {
+            Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor "DarkGray"
             Write_LogEntry -Message "Konnte Online-Version nicht aus der Webseite extrahieren." -Level "WARNING"
         }
     } else {
@@ -144,6 +147,8 @@ $state = Compare-VersionState -InstalledVersion $installedVersion -InstallerVers
 if ($state.UpdateRequired) {
     Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor "magenta"
     Write_LogEntry -Message "Veraltete Version erkannt. Update wird gestartet." -Level "INFO"
+} else {
+    Write-Host "		Installierte Version ist aktuell." -ForegroundColor "DarkGray"
 }
 Write-Host ""
 
