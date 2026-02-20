@@ -274,6 +274,7 @@ function Resolve-DownloadedInstaller {
     [Parameter(Mandatory)][string]$DownloadedFile,
     [string]$RemovePattern,
     [switch]$ReplaceOld,
+    [string[]]$RemoveFiles,
     [string[]]$KeepFiles,
     [string]$Context = 'Download'
   )
@@ -285,6 +286,22 @@ function Resolve-DownloadedInstaller {
   if ((Get-Item -LiteralPath $DownloadedFile).Length -le 0) {
     Write-DeployLog -Message "[$Context] Datei ist leer: $DownloadedFile" -Level 'ERROR'
     return $false
+  }
+
+  if ($ReplaceOld -and $RemoveFiles) {
+    foreach ($oldFile in $RemoveFiles) {
+      if ([string]::IsNullOrWhiteSpace($oldFile)) { continue }
+      if ($oldFile -eq $DownloadedFile) { continue }
+      if ($KeepFiles -and ($KeepFiles -contains $oldFile)) { continue }
+      if (-not (Test-Path -LiteralPath $oldFile)) { continue }
+
+      try {
+        Remove-Item -LiteralPath $oldFile -Force -ErrorAction Stop
+        Write-DeployLog -Message "[$Context] Alter Installer gelöscht: $oldFile" -Level 'INFO'
+      } catch {
+        Write-DeployLog -Message "[$Context] Konnte alten Installer nicht löschen: $oldFile. Fehler: $($_.Exception.Message)" -Level 'WARNING'
+      }
+    }
   }
 
   if ($ReplaceOld -and $RemovePattern) {

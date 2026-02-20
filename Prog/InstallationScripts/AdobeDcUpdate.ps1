@@ -96,17 +96,7 @@ if ($installerFile) {
                 Write_LogEntry -Message "Download Pfad gesetzt: $downloadPath" -Level "DEBUG"
 
                 $downloadOk = Invoke-InstallerDownload -Url $downloadUrl -OutFile $downloadPath -Context $ProgramName
-                if ($downloadOk) {
-                    $oldInstallerPath = $installerFile.FullName
-                    if ($oldInstallerPath -and ($oldInstallerPath -ne $downloadPath) -and (Test-Path -LiteralPath $oldInstallerPath)) {
-                        try {
-                            Remove-Item -LiteralPath $oldInstallerPath -Force -ErrorAction Stop
-                            Write_LogEntry -Message "Alter Installer gelöscht: $oldInstallerPath" -Level "INFO"
-                        } catch {
-                            Write_LogEntry -Message "Konnte alten Installer nicht löschen: $oldInstallerPath. Fehler: $($_.Exception.Message)" -Level "WARNING"
-                        }
-                    }
-
+                if ($downloadOk -and (Resolve-DownloadedInstaller -DownloadedFile $downloadPath -ReplaceOld -RemoveFiles @($installerFile.FullName) -Context $ProgramName)) {
                     Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor "Green"
                     Write_LogEntry -Message "$ProgramName wurde aktualisiert: $downloadPath" -Level "SUCCESS"
                 } else {
