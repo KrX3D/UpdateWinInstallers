@@ -12,8 +12,8 @@ Import-Module -Name $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $parentPath
 
-$configPath = Join-Path -Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-$config = Import-SharedConfig -ConfigPath $configPath
+$config = Get-DeployConfigOrExit -ScriptRoot $parentPath -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
 $Serverip = $config.Serverip
 $PSHostPath = $config.PSHostPath
 
@@ -55,5 +55,4 @@ if ($InstallationFlag) {
         Write_LogEntry -Message "SFTA.exe nicht gefunden: $setUserFTA" -Level "WARNING"
     }
 }
-
-Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

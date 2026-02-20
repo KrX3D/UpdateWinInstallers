@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$InstallationFlag
 )
 
@@ -15,17 +15,10 @@ Import-Module -Name $dtPath -Force -ErrorAction Stop
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $parentPath
 Write-DeployLog -Message "Script gestartet mit InstallationFlag: $InstallationFlag" -Level 'INFO'
 
-try {
-    $config = Import-DeployConfig -ScriptRoot $parentPath
-    $InstallationFolder = $config.InstallationFolder
-    $Serverip = $config.Serverip
-    $PSHostPath = $config.PSHostPath
-} catch {
-    Write-Host "Konfigurationsdatei konnte nicht geladen werden." -ForegroundColor Red
-    Write-DeployLog -Message "Fehler beim Laden der Konfiguration: $($_.Exception.Message)" -Level 'ERROR'
-    Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
-    exit
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $parentPath -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 $installerPattern = Join-Path $InstallationFolder 'AcroRdrDC*.exe'
 $installArguments = '/sPB /rs /l /msi /qn /norestart ALLUSERS=1 EULA_ACCEPT=YES UPDATE_MODE=0 DISABLE_ARM_SERVICE_INSTALL=1 SUPPRESS_APP_LAUNCH=YES DISABLEDESKTOPSHORTCUT=1 DISABLE_PDFMAKER=YES ENABLE_CHROMEEXT=0 DISABLE_CACHE=1'
