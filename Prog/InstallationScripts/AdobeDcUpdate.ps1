@@ -86,14 +86,7 @@ if ($installerFile) {
                 Write_LogEntry -Message "Download URL konstruiert: $downloadUrl" -Level "DEBUG"
                 Write_LogEntry -Message "Download Pfad gesetzt: $downloadPath" -Level "DEBUG"
 
-                $downloadOk = Invoke-InstallerDownload -Url $downloadUrl -OutFile $downloadPath -Context $ProgramName -ConfirmDownload -ReplaceOld -RemoveFiles @($installerFile.FullName)
-                if ($downloadOk) {
-                    Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor "Green"
-                    Write_LogEntry -Message "$ProgramName wurde aktualisiert: $downloadPath" -Level "SUCCESS"
-                } else {
-                    Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor "Red"
-                    Write_LogEntry -Message "Download fehlgeschlagen: $downloadPath" -Level "ERROR"
-                }
+                [void](Invoke-InstallerDownload -Url $downloadUrl -OutFile $downloadPath -Context $ProgramName -ConfirmDownload -ReplaceOld -RemoveFiles @($installerFile.FullName) -EmitHostStatus -SuccessHostMessage "$ProgramName wurde aktualisiert.." -FailureHostMessage "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -SuccessLogMessage "$ProgramName wurde aktualisiert: $downloadPath" -FailureLogMessage "Download fehlgeschlagen: $downloadPath")
             } else {
                 Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor "DarkGray"
                 Write_LogEntry -Message "Kein Online Update verfügbar. Lokale Version $fileVersion ist aktuell." -Level "INFO"

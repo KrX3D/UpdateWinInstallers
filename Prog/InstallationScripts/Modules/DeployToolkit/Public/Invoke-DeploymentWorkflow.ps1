@@ -309,6 +309,8 @@ function Invoke-InstallerDownload {
     [switch]$EmitHostStatus,
     [string]$SuccessHostMessage,
     [string]$FailureHostMessage,
+    [string]$SuccessLogMessage,
+    [string]$FailureLogMessage,
     [string]$Context = 'Download'
   )
 
@@ -327,11 +329,17 @@ function Invoke-InstallerDownload {
 
   if ($ok) {
     Write-DeployLog -Message "[$Context] Download erfolgreich: $OutFile" -Level 'SUCCESS'
+    if ($SuccessLogMessage) {
+      Write-DeployLog -Message $SuccessLogMessage -Level 'SUCCESS'
+    }
     if ($EmitHostStatus -and $SuccessHostMessage) {
       Write-Host $SuccessHostMessage -ForegroundColor Green
     }
   } else {
     Write-DeployLog -Message "[$Context] Download fehlgeschlagen: $OutFile" -Level 'ERROR'
+    if ($FailureLogMessage) {
+      Write-DeployLog -Message $FailureLogMessage -Level 'ERROR'
+    }
     if ($EmitHostStatus -and $FailureHostMessage) {
       Write-Host $FailureHostMessage -ForegroundColor Red
     }
