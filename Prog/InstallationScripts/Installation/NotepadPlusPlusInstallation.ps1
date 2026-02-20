@@ -61,7 +61,7 @@ Write_LogEntry -Message "Gefundene Notepad++ Installer (erste): $($($NotepadPlus
 
 if ($NotepadPlusPlusExeFiles) {
     Write_LogEntry -Message "Starte Notepad++ Installer: $($NotepadPlusPlusExeFiles.FullName) mit Argument '/S' (synchronous - Wait)" -Level "INFO"
-    Start-Process -Wait -FilePath $NotepadPlusPlusExeFiles.FullName -ArgumentList "/S"
+    [void](Invoke-InstallerFile -FilePath $NotepadPlusPlusExeFiles.FullName -Arguments "/S" -Wait)
     Write_LogEntry -Message "Notepad++ Installer ausgeführt: $($NotepadPlusPlusExeFiles.FullName)" -Level "SUCCESS"
 }
 

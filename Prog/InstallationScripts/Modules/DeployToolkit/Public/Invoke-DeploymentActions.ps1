@@ -37,19 +37,26 @@ function Get-OnlineVersionFromContent {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$Content,
-    [Parameter(Mandatory)][string]$Regex,
+    [Parameter(Mandatory)][string[]]$Regex,
     [int]$RegexGroup = 1,
     [switch]$SelectLast,
-    [scriptblock]$Convert
+    [scriptblock]$Convert,
+    [System.Text.RegularExpressions.RegexOptions]$RegexOptions = ([System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Singleline)
   )
 
-  $matches = [regex]::Matches($Content, $Regex)
-  if (-not $matches -or $matches.Count -eq 0) { return $null }
+  foreach ($pattern in $Regex) {
+    $matches = [regex]::Matches($Content, $pattern, $RegexOptions)
+    if (-not $matches -or $matches.Count -eq 0) { continue }
 
-  $m = if ($SelectLast) { $matches[$matches.Count - 1] } else { $matches[0] }
-  $raw = $m.Groups[$RegexGroup].Value
-  if ($Convert) { return (& $Convert $raw) }
-  return ConvertTo-VersionSafe $raw
+    $m = if ($SelectLast) { $matches[$matches.Count - 1] } else { $matches[0] }
+    $raw = $m.Groups[$RegexGroup].Value
+    if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+
+    if ($Convert) { return (& $Convert $raw) }
+    return ConvertTo-VersionSafe $raw
+  }
+
+  return $null
 }
 
 function Remove-FilesSafe {
@@ -109,14 +116,26 @@ function Invoke-InstallerFile {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$FilePath,
-    [string]$Arguments,
+    [object]$Arguments,
     [switch]$Wait
   )
 
-  if (-not (Test-Path -LiteralPath $FilePath)) { return $false }
+  $resolvedFilePath = $FilePath
+  if (-not (Test-Path -LiteralPath $resolvedFilePath)) {
+    try {
+      $cmd = Get-Command -Name $FilePath -ErrorAction Stop
+      $resolvedFilePath = $cmd.Source
+    } catch {
+      return $false
+    }
+  }
 
   try {
-    Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait:$Wait -ErrorAction Stop | Out-Null
+    $startParams = @{ FilePath = $resolvedFilePath; Wait = [bool]$Wait; ErrorAction = 'Stop' }
+    if ($PSBoundParameters.ContainsKey('Arguments')) {
+      $startParams['ArgumentList'] = $Arguments
+    }
+    Start-Process @startParams | Out-Null
     return $true
   } catch {
     return $false

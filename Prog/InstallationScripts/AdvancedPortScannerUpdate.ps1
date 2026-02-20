@@ -133,7 +133,7 @@ if ($downloadLinkMatch.Success) {
 			
             #Invoke-WebRequest -Uri $downloadLink -OutFile $downloadedFilePath
 			$webClient = New-Object System.Net.WebClient
-			$webClient.DownloadFile($downloadLink, $downloadedFilePath)
+			[void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadedFilePath)
 			$webClient.Dispose()
             Write_LogEntry -Message "Download abgeschlossen (temporär, Überprüfung folgt): $($downloadedFilePath)" -Level "DEBUG"
 			

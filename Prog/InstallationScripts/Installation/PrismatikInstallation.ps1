@@ -67,7 +67,7 @@ Write_LogEntry -Message ("Gefundener Prismatik Installer: " + $($(if ($prismatik
 if ($prismatikInstaller) {
     try {
         Write_LogEntry -Message "Starte Prismatik Installer: $($prismatikInstaller.FullName)" -Level "INFO"
-        Start-Process -FilePath $prismatikInstaller.FullName -ArgumentList '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXS', '/NOCANCEL', '/NORESTART', '/NOICONS' -Wait
+        [void](Invoke-InstallerFile -FilePath $prismatikInstaller.FullName -Arguments '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXS', '/NOCANCEL', '/NORESTART', '/NOICONS' -Wait)
         Write_LogEntry -Message "Prismatik Installer ausgefhrt: $($prismatikInstaller.FullName)" -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler beim Ausfhren des Prismatik Installers $($prismatikInstaller.FullName): $($_)" -Level "ERROR"
