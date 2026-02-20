@@ -175,7 +175,7 @@ if ($webVersion) {
             Write_LogEntry -Message "Starte Download: $($downloadLink) -> $($newFilePath)" -Level "INFO"
             $webClient = New-Object System.Net.WebClient
             try {
-                $webClient.DownloadFile($downloadLink, $newFilePath)
+                [void](Invoke-DownloadFile -Url $downloadLink -OutFile $newFilePath)
                 Write_LogEntry -Message "Download abgeschlossen: $($newFilePath)" -Level "SUCCESS"
             } catch {
                 Write_LogEntry -Message "Fehler beim Download $($downloadLink): $($_)" -Level "ERROR"

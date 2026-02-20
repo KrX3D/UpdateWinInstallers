@@ -76,7 +76,7 @@ if (Test-Path $vlcSource) {
     $vlcInstaller = Get-ChildItem -Path $vlcSource -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($vlcInstaller) {
         Write_LogEntry -Message "Gefundener VLC Installer: $($vlcInstaller.FullName)" -Level "DEBUG"
-        Start-Process -FilePath $vlcInstaller.FullName -ArgumentList "/S" -Wait
+        [void](Invoke-InstallerFile -FilePath $vlcInstaller.FullName -Arguments "/S" -Wait)
         Write_LogEntry -Message "VLC Installer ausgeführt: $($vlcInstaller.FullName)" -Level "SUCCESS"
     } else {
         Write_LogEntry -Message "Kein konkreter VLC Installer unter Pattern $($vlcSource) gefunden." -Level "WARNING"

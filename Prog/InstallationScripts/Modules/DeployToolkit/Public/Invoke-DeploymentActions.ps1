@@ -109,14 +109,26 @@ function Invoke-InstallerFile {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$FilePath,
-    [string]$Arguments,
+    [object]$Arguments,
     [switch]$Wait
   )
 
-  if (-not (Test-Path -LiteralPath $FilePath)) { return $false }
+  $resolvedFilePath = $FilePath
+  if (-not (Test-Path -LiteralPath $resolvedFilePath)) {
+    try {
+      $cmd = Get-Command -Name $FilePath -ErrorAction Stop
+      $resolvedFilePath = $cmd.Source
+    } catch {
+      return $false
+    }
+  }
 
   try {
-    Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait:$Wait -ErrorAction Stop | Out-Null
+    $startParams = @{ FilePath = $resolvedFilePath; Wait = [bool]$Wait; ErrorAction = 'Stop' }
+    if ($PSBoundParameters.ContainsKey('Arguments')) {
+      $startParams['ArgumentList'] = $Arguments
+    }
+    Start-Process @startParams | Out-Null
     return $true
   } catch {
     return $false
