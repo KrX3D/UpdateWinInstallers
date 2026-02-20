@@ -38,7 +38,7 @@ try {
 $installerPath = "$InstallationFolder\AcroRdrDC*_de_DE.exe"
 Write_LogEntry -Message "Installer path gesetzt: $installerPath" -Level "DEBUG"
 
-$versionPattern = 'AcroRdrDCx64(\d+)_de_DE.exe'
+$versionPattern = 'AcroRdrDC(?:x64)?(\d+)_(?:de_DE|en_US|MUI)\.exe'
 Write_LogEntry -Message "Version pattern gesetzt: $versionPattern" -Level "DEBUG"
 
 $installerFile = Get-InstallerFilePath -PathPattern $installerPath
@@ -48,7 +48,7 @@ if ($installerFile) {
     Write_LogEntry -Message "Installer gefunden: $($installerFile.Name)" -Level "INFO"
     # Extract the version number from the file name
     $fileVersion = Get-InstallerFileVersion -FilePath $installerFile.FullName -FileNameRegex $versionPattern -Source FileName -Convert { param($v) Convert-AdobeToVersion $v }
-    Write_LogEntry -Message "Lokale Installationsdatei Version extrahiert: $fileVersion" -Level "DEBUG"
+    Write_LogEntry -Message "Lokale Installationsdatei Version aus Dateiname extrahiert: $fileVersion" -Level "DEBUG"
 
     # Check if there is a newer version available online
     #https://www.adobe.com/devnet-docs/acrobatetk/tools/ReleaseNotesDC/index.html
@@ -77,6 +77,7 @@ if ($installerFile) {
 
         $latestVersion = $onlineInfo.Version
         $latestVersionObj = if ($latestVersion) { Convert-AdobeToVersion $latestVersion } else { $null }
+        Write_LogEntry -Message "Online Rohversion: $latestVersion; Vergleichsversion: $latestVersionObj" -Level "DEBUG"
 
         Write-Host ""
         Write-Host "Lokale Version: $fileVersion" -ForegroundColor "Cyan"
@@ -108,7 +109,7 @@ if ($installerFile) {
             }
         } else {
             Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor "DarkGray"
-            Write_LogEntry -Message "Konnte Online-Version nicht aus der Webseite extrahieren." -Level "WARNING"
+            Write_LogEntry -Message "Online-Version gefunden, konnte aber nicht in Vergleichsformat umgewandelt werden (raw=$latestVersion)." -Level "WARNING"
         }
     } else {
         Write_LogEntry -Message "Fehler beim Abrufen der Webseite $webPageUrl" -Level "ERROR"
