@@ -77,7 +77,7 @@ $arduinoExe = Get-ChildItem "$Serverip\Daten\Prog\Arduino\arduino-ide*.exe" | Se
 if ($arduinoExe) {
     Write_LogEntry -Message "Gefundener Arduino-Installer: $($arduinoExe)" -Level "INFO"
     Write_LogEntry -Message "Starte Arduino Installer: $($arduinoExe) mit Argument: /S" -Level "INFO"
-    Start-Process -FilePath $arduinoExe -ArgumentList "/S" -Wait
+    [void](Invoke-InstallerFile -FilePath $arduinoExe -Arguments "/S" -Wait)
     Write_LogEntry -Message "Arduino Installer beendet: $($arduinoExe)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Kein Arduino-Installer gefunden unter: $($Serverip)\Daten\Prog\Arduino\arduino-ide*.exe" -Level "WARNING"

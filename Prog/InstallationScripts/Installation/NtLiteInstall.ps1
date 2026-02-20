@@ -62,7 +62,7 @@ Write_LogEntry -Message "Gefundener NTLite Installer: $($ntliteInstaller.FullNam
 
 if ($ntliteInstaller) {
     Write_LogEntry -Message "Starte NTLite Installer: $($ntliteInstaller.FullName) mit Argumenten '/VERYSILENT','/NORESTART' (synchronous - Wait)" -Level "INFO"
-    Start-Process -FilePath $ntliteInstaller.FullName -ArgumentList '/VERYSILENT', '/NORESTART' -Wait
+    [void](Invoke-InstallerFile -FilePath $ntliteInstaller.FullName -Arguments '/VERYSILENT', '/NORESTART' -Wait)
     Write_LogEntry -Message "NTLite Installer ausgeführt: $($ntliteInstaller.FullName)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Kein NTLite Installer gefunden unter: $($Serverip)\Daten\Prog\NTLite" -Level "WARNING"
