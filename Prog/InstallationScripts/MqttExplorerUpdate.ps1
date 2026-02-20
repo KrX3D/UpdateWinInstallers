@@ -270,7 +270,7 @@ function CheckAndUpdateMQTTExplorer {
         if ($GithubToken) { $wc.Headers.Add("Authorization", "token $GithubToken") }
 
         Write_LogEntry -Message "Starte Download: $setupUrl -> $downloadPath" -Level "INFO"
-        $wc.DownloadFile($setupUrl, $downloadPath)
+        [void](Invoke-DownloadFile -Url $setupUrl -OutFile $downloadPath)
         Write_LogEntry -Message "Download abgeschlossen: $downloadPath" -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler beim Herunterladen $setupUrl : $($_.Exception.Message)" -Level "ERROR"

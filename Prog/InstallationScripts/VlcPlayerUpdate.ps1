@@ -146,14 +146,14 @@ function CheckVLCVersion {
             $webClient.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PowerShell WebClient"
             $webClient.Proxy = [System.Net.WebRequest]::DefaultWebProxy
             $webClient.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-            $webClient.DownloadFile($downloadUrl, $downloadPath)
+            [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
             Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message "Fehler beim Download $($downloadUrl): $($_)" -Level "ERROR"
             Write_LogEntry -Message "Versuche HTTPS erneut ohne Proxy (direkte Verbindung)..." -Level "WARNING"
             try {
                 $webClient.Proxy = $null
-                $webClient.DownloadFile($downloadUrl, $downloadPath)
+                [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
                 Write_LogEntry -Message "Download ohne Proxy abgeschlossen: $($downloadPath)" -Level "SUCCESS"
             } catch {
                 Write_LogEntry -Message "HTTPS ohne Proxy fehlgeschlagen $($downloadUrl): $($_)" -Level "ERROR"
@@ -163,7 +163,7 @@ function CheckVLCVersion {
             Write_LogEntry -Message "HTTP-URL: $($httpDownloadUrl)" -Level "DEBUG"
             try {
                 $webClient.Proxy = $null
-                $webClient.DownloadFile($httpDownloadUrl, $downloadPath)
+                [void](Invoke-DownloadFile -Url $httpDownloadUrl -OutFile $downloadPath)
                 Write_LogEntry -Message "Download über HTTP abgeschlossen: $($downloadPath)" -Level "SUCCESS"
             } catch {
                 Write_LogEntry -Message "HTTP-Download fehlgeschlagen $($httpDownloadUrl): $($_)" -Level "ERROR"
@@ -196,7 +196,7 @@ function CheckVLCVersion {
 }
 
 # Get the latest VLC Player installer file in the directory
-$latestInstaller = Get-ChildItem -Path $InstallationFolder -Filter "vlc-*-win64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$latestInstaller = Get-InstallerFilePath -Directory $InstallationFolder -Filter "vlc-*-win64.exe"
 
 if ($latestInstaller) {
     Write_LogEntry -Message "Gefundene lokale Installer-Datei: $($latestInstaller.FullName)" -Level "DEBUG"
@@ -221,7 +221,7 @@ if ($latestInstaller) {
 Write-Host ""
 
 #Check Installed Version / Install if neded
-$FoundFile = Get-ChildItem -Path $InstallationFolder -Filter "vlc-*-win64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$FoundFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter "vlc-*-win64.exe"
 if ($FoundFile) {
     Write_LogEntry -Message "Gefundene Installationsdatei für nachfolgende Prüfungen: $($FoundFile.FullName)" -Level "DEBUG"
     $InstallationFileName = $FoundFile.Name

@@ -17,13 +17,13 @@ function Invoke-WebRequestCompat {
     )
     if ($UseBasicParsingSupported) {
         if ($OutFile) {
-            return Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
+            return (Invoke-DownloadFile -Url $Uri -OutFile $OutFile)
         } else {
             return Invoke-WebRequest -Uri $Uri -UseBasicParsing -ErrorAction Stop
         }
     } else {
         if ($OutFile) {
-            return Invoke-WebRequest -Uri $Uri -OutFile $OutFile -ErrorAction Stop
+            return (Invoke-DownloadFile -Url $Uri -OutFile $OutFile)
         } else {
             return Invoke-WebRequest -Uri $Uri -ErrorAction Stop
         }
@@ -79,7 +79,7 @@ if (Test-Path -Path $configPath) {
 $installerPath = "$InstallationFolder\WinSCP-*.exe"
 Write_LogEntry -Message "Installer-Pfad (Wildcard): $($installerPath)" -Level "DEBUG"
 
-$InstallationFileFile = Get-ChildItem -Path $installerPath -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$InstallationFileFile = Get-InstallerFilePath -PathPattern $installerPath
 if ($InstallationFileFile) {
     Write_LogEntry -Message "Gefundene Installationsdatei: $($InstallationFileFile.FullName)" -Level "INFO"
 } else {
@@ -328,7 +328,7 @@ if ($InstallationFileFile) {
                     try { $webClient.Proxy = [System.Net.WebRequest]::DefaultWebProxy } catch {}
 
                     # Download (synchronous, fast)
-                    $webClient.DownloadFile($downloadLink, $downloadPath)
+                    [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
                     $downloadSucceeded = Test-Path -Path $downloadPath
 
                     if ($downloadSucceeded) {
@@ -387,7 +387,7 @@ if ($InstallationFileFile) {
     Write_LogEntry -Message "Beginne Prüfung installierter Versionen in der Registry" -Level "DEBUG"
 
     #Check Installed Version / Install if needed
-    $InstallationFileFile = Get-ChildItem -Path $installerPath -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $InstallationFileFile = Get-InstallerFilePath -PathPattern $installerPath
     if ($InstallationFileFile) {
         $versionInfo = (Get-Item $InstallationFileFile).VersionInfo
         $localVersion = ($versionInfo.ProductVersion).ToString().Trim()
