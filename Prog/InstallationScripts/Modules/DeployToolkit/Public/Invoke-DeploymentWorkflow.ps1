@@ -17,7 +17,7 @@ function Get-OnlineVersion {
   param(
     [Parameter(ParameterSetName='Url', Mandatory)][string]$Url,
     [Parameter(ParameterSetName='Content', Mandatory)][string]$Content,
-    [Parameter(Mandatory)][string]$Regex,
+    [Parameter(Mandatory)][string[]]$Regex,
     [int]$RegexGroup = 1,
     [switch]$SelectLast,
     [scriptblock]$Convert
@@ -209,10 +209,11 @@ function Get-OnlineVersionInfo {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$Url,
-    [Parameter(Mandatory)][string]$Regex,
+    [Parameter(Mandatory)][string[]]$Regex,
     [int]$RegexGroup = 1,
     [scriptblock]$Transform,
     [switch]$SelectLast,
+    [System.Text.RegularExpressions.RegexOptions]$RegexOptions = ([System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Singleline),
     [string]$Context = 'OnlineVersion'
   )
 
@@ -224,12 +225,16 @@ function Get-OnlineVersionInfo {
     return [pscustomobject]@{ Url = $Url; Content = $null; Version = $null }
   }
 
-  $version = Get-OnlineVersionFromContent -Content $content -Regex $Regex -RegexGroup $RegexGroup -SelectLast:$SelectLast
+  $version = Get-OnlineVersionFromContent -Content $content -Regex $Regex -RegexGroup $RegexGroup -SelectLast:$SelectLast -RegexOptions $RegexOptions
   if ($Transform) {
     $version = & $Transform $version
   }
 
-  Write-DeployLog -Message "[$Context] Abruf erfolgreich, Version: $version" -Level 'DEBUG'
+  if ($version) {
+    Write-DeployLog -Message "[$Context] Abruf erfolgreich, Version: $version" -Level 'DEBUG'
+  } else {
+    Write-DeployLog -Message "[$Context] Keine passende Online-Version gefunden" -Level 'WARNING'
+  }
 
   [pscustomobject]@{ Url = $Url; Content = $content; Version = $version }
 }

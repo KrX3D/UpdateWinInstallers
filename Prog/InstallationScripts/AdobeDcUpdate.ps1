@@ -55,9 +55,20 @@ if ($installerFile) {
     #https://helpx.adobe.com/de/acrobat/release-note/release-notes-acrobat-reader.html
 
     $webPageUrl = "https://it-blogger.net/adobe-reader-offline-installer-fuer-windows-und-macos/"
-    $latestVersionPattern = 'Adobe Acrobat Reader 64-bit Version (\d+\.\d+\.\d+).*?Windows'
+    $latestVersionPattern = @(
+        'Adobe Acrobat Reader 64-bit Version\s*([0-9\.]+).*?Windows',
+        'AcroRdrDCx64([0-9]{8,10})_de_DE\.exe'
+    )
 
-    $onlineInfo = Get-OnlineVersionInfo -Url $webPageUrl -Regex $latestVersionPattern -Context $ProgramName -Transform { param($v) if ($v) { $v -replace '\.' -replace '^..' } else { $null } }
+    $onlineInfo = Get-OnlineVersionInfo -Url $webPageUrl -Regex $latestVersionPattern -Context $ProgramName -Transform {
+        param($v)
+        if (-not $v) { return $null }
+        if ($v -match '^\d{8,10}$') { return $v }
+
+        $versionObj = Convert-AdobeToVersion $v
+        if (-not $versionObj) { return $null }
+        return Convert-AdobeVersionToDigits $versionObj
+    }
 
     if ($onlineInfo.Content) {
         Write_LogEntry -Message "Webseite für Versionsprüfung abgerufen: $webPageUrl" -Level "DEBUG"
