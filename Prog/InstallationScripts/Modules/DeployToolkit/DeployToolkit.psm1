@@ -37,6 +37,7 @@ Export-ModuleMember -Function @(
   'Invoke-ProgramUninstall',
   'Invoke-ProgramInstallFromPattern',
   'Remove-StartMenuEntries',
+  'Import-RegistryFile',
   'Set-UserFileAssociations',
   'Get-OnlineVersionInfo',
   'Invoke-InstallerDownload',

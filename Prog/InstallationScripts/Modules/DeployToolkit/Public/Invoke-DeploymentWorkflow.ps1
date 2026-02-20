@@ -178,13 +178,61 @@ function Invoke-ProgramInstallFromPattern {
 function Remove-StartMenuEntries {
   [CmdletBinding()]
   param(
-    [Parameter(Mandatory)][string[]]$Paths
+    [Parameter(Mandatory)][string[]]$Paths,
+    [string]$Context = 'Shortcuts',
+    [switch]$EmitHostMessages
   )
 
   foreach ($path in $Paths) {
+    if ([string]::IsNullOrWhiteSpace($path)) { continue }
+
+    Write-DeployLog -Message "[$Context] Prüfe Verknüpfung: $path" -Level 'DEBUG'
     if (Test-Path -LiteralPath $path) {
-      Remove-PathSafe -Path $path -Recurse | Out-Null
+      if ($EmitHostMessages) {
+        Write-Host "`tVerknüpfung wird entfernt: $path" -ForegroundColor Cyan
+      }
+
+      if (Remove-PathSafe -Path $path -Recurse) {
+        Write-DeployLog -Message "[$Context] Verknüpfung entfernt: $path" -Level 'SUCCESS'
+      } else {
+        Write-DeployLog -Message "[$Context] Konnte Verknüpfung nicht entfernen: $path" -Level 'WARNING'
+      }
+    } else {
+      Write-DeployLog -Message "[$Context] Verknüpfung nicht gefunden: $path" -Level 'DEBUG'
     }
+  }
+}
+
+function Import-RegistryFile {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$PSHostPath,
+    [Parameter(Mandatory)][string]$RegistryImportScript,
+    [Parameter(Mandatory)][string]$RegFilePath,
+    [string]$Context = 'Registry'
+  )
+
+  if (-not (Test-Path -LiteralPath $PSHostPath)) {
+    Write-DeployLog -Message "[$Context] PSHostPath nicht gefunden: $PSHostPath" -Level 'ERROR'
+    return $false
+  }
+  if (-not (Test-Path -LiteralPath $RegistryImportScript)) {
+    Write-DeployLog -Message "[$Context] RegistryImport Script nicht gefunden: $RegistryImportScript" -Level 'ERROR'
+    return $false
+  }
+  if (-not (Test-Path -LiteralPath $RegFilePath)) {
+    Write-DeployLog -Message "[$Context] Reg-Datei nicht gefunden: $RegFilePath" -Level 'ERROR'
+    return $false
+  }
+
+  Write-DeployLog -Message "[$Context] Starte Registry-Import: $RegFilePath" -Level 'INFO'
+  try {
+    & $PSHostPath -NoLogo -NoProfile -ExecutionPolicy Bypass -File $RegistryImportScript -Path $RegFilePath
+    Write-DeployLog -Message "[$Context] Registry-Import abgeschlossen: $RegFilePath" -Level 'SUCCESS'
+    return $true
+  } catch {
+    Write-DeployLog -Message "[$Context] Registry-Import fehlgeschlagen: $RegFilePath. Fehler: $($_.Exception.Message)" -Level 'ERROR'
+    return $false
   }
 }
 
@@ -193,15 +241,21 @@ function Set-UserFileAssociations {
   param(
     [Parameter(Mandatory)][string]$SetUserFtaPath,
     [Parameter(Mandatory)][string]$ApplicationPath,
-    [Parameter(Mandatory)][string[]]$Extensions
+    [Parameter(Mandatory)][string[]]$Extensions,
+    [string]$Context = 'FileAssociations'
   )
 
-  if (-not (Test-Path -LiteralPath $SetUserFtaPath)) { return $false }
+  if (-not (Test-Path -LiteralPath $SetUserFtaPath)) {
+    Write-DeployLog -Message "[$Context] SFTA nicht gefunden: $SetUserFtaPath" -Level 'WARNING'
+    return $false
+  }
 
   foreach ($extension in ($Extensions | Sort-Object -Unique)) {
+    Write-DeployLog -Message "[$Context] Setze Zuordnung: $extension -> $ApplicationPath" -Level 'DEBUG'
     & $SetUserFtaPath --reg $ApplicationPath $extension
   }
 
+  Write-DeployLog -Message "[$Context] Dateizuordnungen abgeschlossen" -Level 'SUCCESS'
   return $true
 }
 
