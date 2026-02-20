@@ -138,7 +138,7 @@ if (Test-Path $xmlFilePath) {
             $tempFilePath = Join-Path $env:TEMP "mpam-fe.exe"
             #Invoke-WebRequest -Uri $downloadLink -OutFile $tempFilePath
 			$webClient = New-Object System.Net.WebClient
-			$webClient.DownloadFile($downloadLink, $tempFilePath)
+			[void](Invoke-DownloadFile -Url $downloadLink -OutFile $tempFilePath)
 			$webClient.Dispose()
 
 			#Write-Host "Extracting $tempFilePath using 7-Zip"
@@ -201,7 +201,7 @@ if (Test-Path $xmlFilePath) {
 							$downloadPath = Join-Path -Path $tempPath -ChildPath ($updateLink.Split("/")[-1])
 
 							# Download the file to the desktop
-							Invoke-WebRequest -Uri $updateLink -OutFile $downloadPath
+							[void](Invoke-DownloadFile -Url $updateLink -OutFile $downloadPath)
 						} else {
 							Write-Host "Update link 'updateplatform.amd64fre' wurde nicht gefunden." -foregroundcolor "Red"
 						}

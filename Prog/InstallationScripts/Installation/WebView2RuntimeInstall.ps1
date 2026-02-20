@@ -67,7 +67,7 @@ if ($exeFilePath) {
         Write_LogEntry -Message "Starte Installation von $($ProgramName) mit Datei: $($exeFilePath)" -Level "INFO"
         # Install the program silently
         #Start-Process -FilePath $exeFilePath -ArgumentList "/install", "/silent" -Wait
-        Start-Process -FilePath $exeFilePath -Wait
+        [void](Invoke-InstallerFile -FilePath $exeFilePath -Wait)
         Write_LogEntry -Message "Start-Process für $($exeFilePath) wurde ausgeführt." -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler bei der Installation von $($ProgramName): $($_)" -Level "ERROR"

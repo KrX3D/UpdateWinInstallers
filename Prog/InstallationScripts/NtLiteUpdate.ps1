@@ -124,7 +124,7 @@ if ($webPageContent) {
                     $webClient = New-Object System.Net.WebClient
                     try {
                         Write_LogEntry -Message "Starte Download von $($downloadLink) nach $($downloadPath)" -Level "INFO"
-                        $webClient.DownloadFile($downloadLink, $downloadPath)
+                        [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
                         Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "DEBUG"
                     } catch {
                         Write_LogEntry -Message "Fehler beim Herunterladen von $($downloadLink): $($($_.Exception.Message))" -Level "ERROR"

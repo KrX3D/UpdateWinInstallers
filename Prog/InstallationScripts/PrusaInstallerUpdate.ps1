@@ -325,7 +325,7 @@ if ([version]$newVersion -ne [version]$localVersion) {
 				
 				$webClient = New-Object System.Net.WebClient
 	            try {
-				    $webClient.DownloadFile($win64DownloadUrl, $newInstaller)
+				    [void](Invoke-DownloadFile -Url $win64DownloadUrl -OutFile $newInstaller)
 	                Write_LogEntry -Message "Download beendet: $($newInstaller)" -Level "DEBUG"
 	            } catch {
 	                Write_LogEntry -Message "Fehler beim Herunterladen von $($win64DownloadUrl): $($_)" -Level "ERROR"
