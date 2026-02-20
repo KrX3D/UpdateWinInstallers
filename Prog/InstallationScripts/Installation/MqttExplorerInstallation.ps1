@@ -64,7 +64,7 @@ if ($MQTTExplorerExeFiles) {
     foreach ($file in $MQTTExplorerExeFiles) {
         Write_LogEntry -Message "Starte Installer: $($file.FullName) mit Argument '/S' (synchronous - Wait)" -Level "INFO"
         try {
-            Start-Process -Wait -FilePath $file.FullName -ArgumentList "/S"
+            [void](Invoke-InstallerFile -FilePath $file.FullName -Arguments "/S" -Wait)
             Write_LogEntry -Message "Installer erfolgreich ausgeführt: $($file.FullName)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message "Fehler beim Ausführen des Installers $($file.FullName): $($_)" -Level "ERROR"

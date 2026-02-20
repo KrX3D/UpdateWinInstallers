@@ -78,7 +78,7 @@ function DownloadFile {
     #Invoke-WebRequest -Uri $Url -OutFile $Path
 	$webClient = New-Object System.Net.WebClient
 	try {
-		$webClient.DownloadFile($Url, $Path)
+		[void](Invoke-DownloadFile -Url $Url -OutFile $Path)
 		Write_LogEntry -Message "Download erfolgreich: $($Path)" -Level "SUCCESS"
 	} catch {
 		Write_LogEntry -Message "Fehler beim Download $($Url) -> $($Path): $($_)" -Level "ERROR"

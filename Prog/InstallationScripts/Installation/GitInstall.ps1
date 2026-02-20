@@ -62,7 +62,7 @@ $gitInstaller = Get-ChildItem -Path "$Serverip\Daten\Prog\Git*.exe" | Select-Obj
 if ($gitInstaller) {
     Write_LogEntry -Message "Git-Installer gefunden: $($gitInstaller)" -Level "DEBUG"
     Write_LogEntry -Message "Starte Git-Installer: $($gitInstaller) mit stillen Parametern (Wait)" -Level "INFO"
-    Start-Process -FilePath $gitInstaller -ArgumentList '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXS', '/NOCANCEL', '/NORESTART', '/NOICONS', '/PathOption=CmdTools' -Wait
+    [void](Invoke-InstallerFile -FilePath $gitInstaller -Arguments '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXS', '/NOCANCEL', '/NORESTART', '/NOICONS', '/PathOption=CmdTools' -Wait)
     Write_LogEntry -Message "Git-Installer beendet: $($gitInstaller)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Kein Git-Installer gefunden unter: $($Serverip)\Daten\Prog (Pattern: Git*.exe)" -Level "WARNING"

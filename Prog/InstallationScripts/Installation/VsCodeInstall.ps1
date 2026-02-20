@@ -61,7 +61,7 @@ Write_LogEntry -Message "Beginne VS Code Installation" -Level "INFO"
 $vsCodeInstaller = Get-ChildItem -Path "$Serverip\Daten\Prog\VSCode*.exe" | Select-Object -ExpandProperty FullName
 Write_LogEntry -Message "Gefundener VS Code Installer: $($vsCodeInstaller)" -Level "DEBUG"
 try {
-    Start-Process -FilePath $vsCodeInstaller -ArgumentList '/VERYSILENT', '/NORESTART', '/MERGETASKS=!runcode,desktopicon,fileassoc' -Wait
+    [void](Invoke-InstallerFile -FilePath $vsCodeInstaller -Arguments '/VERYSILENT', '/NORESTART', '/MERGETASKS=!runcode,desktopicon,fileassoc' -Wait)
     Write_LogEntry -Message "VS Code Installer ausgeführt: $($vsCodeInstaller)" -Level "SUCCESS"
 } catch {
     Write_LogEntry -Message "Fehler beim Ausführen des VS Code Installers $($vsCodeInstaller): $($_)" -Level "ERROR"
@@ -105,7 +105,7 @@ if ($InstallationFlag -eq $true) {
 	foreach ($extension in $vsCodeExtensions) {
 		Write-Host "	$extension Plugin wird installiert." -foregroundcolor "Yellow"
         Write_LogEntry -Message "Installiere VS Code Extension: $($extension) mit CLI: $($vsCodeExecutable)" -Level "DEBUG"
-		Start-Process -FilePath $vsCodeExecutable -ArgumentList "--install-extension", $extension, "--force" -Wait
+		[void](Invoke-InstallerFile -FilePath $vsCodeExecutable -Arguments "--install-extension", $extension, "--force" -Wait)
         Write_LogEntry -Message "Beendet Installation Extension: $($extension)" -Level "SUCCESS"
 	}
 }

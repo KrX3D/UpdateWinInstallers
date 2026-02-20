@@ -118,7 +118,7 @@ try {
             $webClient = New-Object System.Net.WebClient
             try {
                 Write_LogEntry -Message "Starte Download $($downloadUrl) nach $($tempFilePath)" -Level "INFO"
-                $webClient.DownloadFile($downloadUrl, $tempFilePath)
+                [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $tempFilePath)
                 Write_LogEntry -Message "Download abgeschlossen: $($tempFilePath)" -Level "DEBUG"
             }
             catch {

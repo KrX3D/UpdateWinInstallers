@@ -73,7 +73,7 @@ if ($InstallationFlag -eq $false) {
         Write-Host "Vorhandene Logitech G Hub Version wird deinstalliert." -foregroundcolor "magenta"
 
         try {
-            Start-Process -FilePath $lgHubExePath -ArgumentList "--uninstall" -Wait
+            [void](Invoke-InstallerFile -FilePath $lgHubExePath -Arguments "--uninstall" -Wait)
             Write_LogEntry -Message "Deinstallationsprozess gestartet für: $($lgHubExePath)" -Level "INFO"
         } catch {
             Write_LogEntry -Message "Fehler beim Starten der Deinstallation $($lgHubExePath): $($_)" -Level "ERROR"
