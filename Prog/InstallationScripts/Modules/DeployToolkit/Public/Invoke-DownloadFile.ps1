@@ -3,7 +3,7 @@
   param(
     [Parameter(Mandatory)][string]$Url,
     [Parameter(Mandatory)][string]$OutFile,
-    [int]$Retries = 3,
+    [int]$Retries = 1,
     [int]$RetryDelaySeconds = 2,
     [System.Net.SecurityProtocolType]$SecurityProtocol
   )
@@ -44,7 +44,7 @@
         $wc.Dispose()
       }
 
-      if (Test-Path $OutFile -PathType Leaf -and (Get-Item $OutFile).Length -gt 0) {
+      if ((Test-Path $OutFile -PathType Leaf) -and ((Get-Item $OutFile).Length -gt 0)) {
         if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
           Write_LogEntry -Message "Download OK ($((Get-Item $OutFile).Length) Bytes)" -Level "SUCCESS"
         }

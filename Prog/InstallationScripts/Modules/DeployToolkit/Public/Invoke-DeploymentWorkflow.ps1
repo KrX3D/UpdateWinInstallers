@@ -1,4 +1,4 @@
-function Get-InstallerFile {
+﻿function Get-InstallerFile {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$PathPattern,
@@ -244,6 +244,8 @@ function Invoke-InstallerDownload {
   param(
     [Parameter(Mandatory)][string]$Url,
     [Parameter(Mandatory)][string]$OutFile,
+    [int]$Retries = 1,
+    [int]$RetryDelaySeconds = 2,
     [System.Net.SecurityProtocolType]$SecurityProtocol,
     [string]$Context = 'Download'
   )
@@ -252,9 +254,9 @@ function Invoke-InstallerDownload {
 
   $ok = $false
   if ($PSBoundParameters.ContainsKey('SecurityProtocol')) {
-    $ok = Invoke-DownloadFile -Url $Url -OutFile $OutFile -SecurityProtocol $SecurityProtocol
+    $ok = Invoke-DownloadFile -Url $Url -OutFile $OutFile -Retries $Retries -RetryDelaySeconds $RetryDelaySeconds -SecurityProtocol $SecurityProtocol
   } else {
-    $ok = Invoke-DownloadFile -Url $Url -OutFile $OutFile
+    $ok = Invoke-DownloadFile -Url $Url -OutFile $OutFile -Retries $Retries -RetryDelaySeconds $RetryDelaySeconds
   }
 
   if ($ok) {
