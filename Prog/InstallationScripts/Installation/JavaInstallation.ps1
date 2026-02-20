@@ -96,7 +96,7 @@ Write_LogEntry -Message "Beginne Installation von Java (falls vorhanden)." -Leve
 $javaInstaller = Get-ChildItem -Path "$Serverip\Daten\Prog\Kicad\jdk*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($javaInstaller) {
     Write_LogEntry -Message "Java-Installer gefunden: $($javaInstaller.FullName). Starte still install." -Level "INFO"
-    Start-Process -FilePath $javaInstaller.FullName -ArgumentList '/qn', '/passive', '/norestart' -Wait
+    [void](Invoke-InstallerFile -FilePath $javaInstaller.FullName -Arguments '/qn', '/passive', '/norestart' -Wait)
     Write_LogEntry -Message "Java-Installer-Prozess beendet für: $($javaInstaller.FullName)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Kein Java-Installer gefunden unter: $($Serverip + '\Daten\Prog\Kicad\')" -Level "DEBUG"
