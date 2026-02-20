@@ -1,4 +1,4 @@
-param(
+﻿param(
   [switch]$InstallationFlag = $false
 )
 
@@ -9,7 +9,7 @@ $dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
 if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
 Import-Module $dtPath -Force -ErrorAction Stop
 
-Initialize-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
 function Log {
   param([string]$Message, [string]$Level = "INFO")
@@ -104,7 +104,7 @@ if (-not $local) {
       $downloadUrl = ($downloadPageUrl -replace "download\.html", $bestOnlineLink)
       $outFile = Join-Path $InstallationFolder ("7z{0}-x64.exe" -f $bestOnlineDigits)
 
-      $sync = Sync-InstallerFromOnline -LocalVersion $local.Version -OnlineVersion $bestOnlineV -DownloadUrl $downloadUrl -TargetFile $outFile -CleanupPattern $localPattern -KeepTargetOnly
+      $sync = Update-InstallerFromOnline -LocalVersion $local.Version -OnlineVersion $bestOnlineV -DownloadUrl $downloadUrl -TargetFile $outFile -CleanupPattern $localPattern -KeepTargetOnly
 
       if ($sync.Updated) {
         Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green

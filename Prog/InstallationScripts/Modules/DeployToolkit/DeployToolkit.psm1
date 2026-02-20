@@ -6,7 +6,7 @@ Get-ChildItem -Path $Public -Filter '*.ps1' -File -ErrorAction SilentlyContinue 
 }
 
 Export-ModuleMember -Function @(
-  'Initialize-DeployContext',
+  'Start-DeployContext',
   'Import-SharedConfig',
   'Invoke-DownloadFile',
   'Get-InstalledSoftware',
@@ -30,7 +30,7 @@ Export-ModuleMember -Function @(
   'Get-InstallerFilePath',
   'Get-InstallerFileVersion',
   'Get-OnlineVersion',
-  'Sync-InstallerFromOnline',
+  'Update-InstallerFromOnline',
   'Get-RegistryVersion',
   'Get-InstallerExecutionPlan',
   'Invoke-InstallerScript',
@@ -40,11 +40,11 @@ Export-ModuleMember -Function @(
   'Set-UserFileAssociations',
   'Get-OnlineVersionInfo',
   'Invoke-InstallerDownload',
-  'Resolve-DownloadedInstaller',
+  'Confirm-DownloadedInstaller',
   'Compare-VersionState',
   'Invoke-InstallDecision',
   'Write-DeployLog',
-  'Finalize-DeployContext',
-  'Resolve-SharedConfigPath',
+  'Stop-DeployContext',
+  'Get-SharedConfigPath',
   'Import-DeployConfig'
 )

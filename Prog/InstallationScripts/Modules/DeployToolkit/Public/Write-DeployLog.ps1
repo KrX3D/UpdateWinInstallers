@@ -1,4 +1,4 @@
-function Write-DeployLog {
+﻿function Write-DeployLog {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$Message,
@@ -10,7 +10,7 @@ function Write-DeployLog {
   }
 }
 
-function Finalize-DeployContext {
+function Stop-DeployContext {
   [CmdletBinding()]
   param(
     [string]$FinalizeMessage = 'Script beendet'
@@ -23,7 +23,7 @@ function Finalize-DeployContext {
   }
 }
 
-function Resolve-SharedConfigPath {
+function Get-SharedConfigPath {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$ScriptRoot
@@ -38,7 +38,7 @@ function Import-DeployConfig {
     [Parameter(Mandatory)][string]$ScriptRoot
   )
 
-  $configPath = Resolve-SharedConfigPath -ScriptRoot $ScriptRoot
+  $configPath = Get-SharedConfigPath -ScriptRoot $ScriptRoot
   Write-DeployLog -Message "Lade Konfigurationsdatei: $configPath" -Level 'DEBUG'
   $config = Import-SharedConfig -ConfigPath $configPath
 

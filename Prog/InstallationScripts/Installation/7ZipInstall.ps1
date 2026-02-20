@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$InstallationFlag
 )
 
@@ -10,7 +10,7 @@ $dtPath = Join-Path $parentPath "Modules\DeployToolkit\DeployToolkit.psm1"
 if (-not (Test-Path $dtPath)) { throw "DeployToolkit nicht gefunden: $dtPath" }
 Import-Module -Name $dtPath -Force -ErrorAction Stop
 
-Initialize-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $parentPath
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $parentPath
 
 $configPath = Join-Path -Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
 $config = Import-SharedConfig -ConfigPath $configPath

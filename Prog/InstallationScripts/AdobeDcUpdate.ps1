@@ -8,7 +8,7 @@ $ScriptType = "Update"
 # DeployToolkit helpers
 $dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
 if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -DisableNameChecking -ErrorAction Stop
+    Import-Module -Name $dtPath -Force -ErrorAction Stop
 } else {
     if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
         Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
@@ -17,7 +17,7 @@ if (Test-Path $dtPath) {
     }
 }
 
-Initialize-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 Write-DeployLog -Message "Script gestartet mit InstallationFlag: $InstallationFlag" -Level 'INFO'
 Write-DeployLog -Message "ProgramName: $ProgramName, ScriptType: $ScriptType" -Level 'DEBUG'
 
@@ -30,7 +30,7 @@ try {
     Write-Host ""
     Write-Host "Konfigurationsdatei konnte nicht geladen werden." -ForegroundColor "Red"
     Write-DeployLog -Message "Script beendet wegen fehlender Konfiguration: $_" -Level 'ERROR'
-    Finalize-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
+    Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
     exit
 }
 
@@ -96,7 +96,7 @@ if ($installerFile) {
                 Write_LogEntry -Message "Download Pfad gesetzt: $downloadPath" -Level "DEBUG"
 
                 $downloadOk = Invoke-InstallerDownload -Url $downloadUrl -OutFile $downloadPath -Context $ProgramName
-                if ($downloadOk -and (Resolve-DownloadedInstaller -DownloadedFile $downloadPath -ReplaceOld -RemoveFiles @($installerFile.FullName) -Context $ProgramName)) {
+                if ($downloadOk -and (Confirm-DownloadedInstaller -DownloadedFile $downloadPath -ReplaceOld -RemoveFiles @($installerFile.FullName) -Context $ProgramName)) {
                     Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor "Green"
                     Write_LogEntry -Message "$ProgramName wurde aktualisiert: $downloadPath" -Level "SUCCESS"
                 } else {
@@ -159,4 +159,4 @@ $installScript = "$Serverip\Daten\Prog\InstallationScripts\Installation\AdobeDcI
 $started = Invoke-InstallDecision -PSHostPath $PSHostPath -InstallScript $installScript -InstallationFlag:$InstallationFlag -InstallRequired:$state.UpdateRequired -Context $ProgramName
 Write-Host ""
 
-Finalize-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

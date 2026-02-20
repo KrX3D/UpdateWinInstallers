@@ -33,7 +33,7 @@ function Get-OnlineVersion {
   return Get-OnlineVersionFromContent -Content $sourceContent -Regex $Regex -RegexGroup $RegexGroup -SelectLast:$SelectLast -Convert $Convert
 }
 
-function Sync-InstallerFromOnline {
+function Update-InstallerFromOnline {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][version]$LocalVersion,
@@ -268,7 +268,7 @@ function Invoke-InstallerDownload {
   return $ok
 }
 
-function Resolve-DownloadedInstaller {
+function Confirm-DownloadedInstaller {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$DownloadedFile,
