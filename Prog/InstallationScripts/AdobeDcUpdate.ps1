@@ -8,7 +8,7 @@ $ScriptType = "Update"
 # DeployToolkit helpers
 $dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
 if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
+    Import-Module -Name $dtPath -Force -DisableNameChecking -ErrorAction Stop
 } else {
     if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
         Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
@@ -47,7 +47,7 @@ $installerFile = Get-InstallerFilePath -PathPattern $installerPath
 if ($installerFile) {
     Write_LogEntry -Message "Installer gefunden: $($installerFile.Name)" -Level "INFO"
     # Extract the version number from the file name
-    $fileVersion = Get-InstallerFileVersion -FilePath $installerFile.FullName -FileNameRegex $versionPattern -Source FileName
+    $fileVersion = Get-InstallerFileVersion -FilePath $installerFile.FullName -FileNameRegex $versionPattern -Source FileName -Convert { param($v) Convert-AdobeToVersion $v }
     Write_LogEntry -Message "Lokale Installationsdatei Version extrahiert: $fileVersion" -Level "DEBUG"
 
     # Check if there is a newer version available online
@@ -64,15 +64,16 @@ if ($installerFile) {
         Write_LogEntry -Message "Starte Extraktion der Online-Version mit Pattern: $latestVersionPattern" -Level "DEBUG"
 
         $latestVersion = $onlineInfo.Version
-        if ($latestVersion) {
-            Write_LogEntry -Message "Online Version gefunden: $latestVersion" -Level "DEBUG"
+        $latestVersionObj = if ($latestVersion) { Convert-AdobeToVersion $latestVersion } else { $null }
+        if ($latestVersionObj) {
+            Write_LogEntry -Message "Online Version gefunden: $latestVersionObj (raw=$latestVersion)" -Level "DEBUG"
             Write-Host ""
             Write-Host "Lokale Version: $fileVersion" -ForegroundColor "Cyan"
-            Write-Host "Online Version: $latestVersion" -ForegroundColor "Cyan"
+            Write-Host "Online Version: $latestVersionObj" -ForegroundColor "Cyan"
             Write-Host ""
 
-            if ($latestVersion -gt $fileVersion) {
-                Write_LogEntry -Message "Neue Version $latestVersion verfügbar. Starte Download." -Level "INFO"
+            if ($latestVersionObj -gt $fileVersion) {
+                Write_LogEntry -Message "Neue Version $latestVersionObj verfügbar. Starte Download." -Level "INFO"
 
                 # Construct the download URL for the offline installer
                 $downloadUrl = "https://ardownload2.adobe.com/pub/adobe/acrobat/win/AcrobatDC/$latestVersion/AcroRdrDCx64$latestVersion`_de_DE.exe"
@@ -108,7 +109,7 @@ Write-Host ""
 #Check Installed Version / Install if needed
 try {
     $latestInstaller = Get-InstallerFilePath -PathPattern $installerPath
-    $localVersion = if ($latestInstaller) { Get-InstallerFileVersion -FilePath $latestInstaller.FullName -FileNameRegex $versionPattern -Source FileName } else { $null }
+    $localVersion = if ($latestInstaller) { Get-InstallerFileVersion -FilePath $latestInstaller.FullName -FileNameRegex $versionPattern -Source FileName -Convert { param($v) Convert-AdobeToVersion $v } } else { $null }
     Write_LogEntry -Message "Lokale Installationsdatei Version (für Vergleiche) ist: $localVersion" -Level "DEBUG"
 } catch {
     $localVersion = $null
@@ -117,7 +118,7 @@ try {
 
 $installedInfo = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
 $installedVersion = if ($installedInfo) { $installedInfo.Version } else { $null }
-$localVersionObj = ConvertTo-VersionSafe $localVersion
+$localVersionObj = if ($localVersion -is [version]) { $localVersion } else { Convert-AdobeToVersion $localVersion }
 
 if ($installedVersion) {
     Write-Host "$ProgramName ist installiert." -ForegroundColor "Green"
