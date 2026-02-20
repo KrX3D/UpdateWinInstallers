@@ -1,4 +1,4 @@
-﻿function Initialize-DeployContext {
+﻿function Start-DeployContext {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][string]$ProgramName,

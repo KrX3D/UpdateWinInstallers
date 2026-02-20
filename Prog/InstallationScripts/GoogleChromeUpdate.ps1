@@ -1,55 +1,23 @@
-param(
+﻿param(
     [switch]$InstallationFlag = $false
 )
 
 $ProgramName = "Google Chrome"
 $ScriptType  = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
+$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
+Import-Module $dtPath -Force -ErrorAction Stop
 
-if (Test-Path $modulePath) {
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
-
-    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
-        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
-    }
-    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
-
-    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
-        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
-    }
-}
-# === Ende Logger-Header ===
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType); PSScriptRoot: $($PSScriptRoot)" -Level "DEBUG"
 
-# DeployToolkit helpers
-$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
-} else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
-}
-
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
-
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-    Write_LogEntry -Message "Konfigurationsdatei gefunden und geladen: $($configPath)" -Level "INFO"
-} else {
-    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    exit
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 #https://github.com/MoeClub/Chrome
 
@@ -96,7 +64,7 @@ if ($apiResponse.versions -is [array] -and $apiResponse.versions.Length -gt 0) {
         #Invoke-WebRequest -Uri $downloadLink -OutFile $downloadPath		
         Write_LogEntry -Message "Starte Download von $($downloadLink) nach $($downloadPath)" -Level "INFO"
         $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($downloadLink, $downloadPath)
+        [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
         $webClient.Dispose()
         Write_LogEntry -Message "Download abgeschlossen; prüfe Dateiexistenz: $($downloadPath)" -Level "DEBUG"
 		
@@ -174,25 +142,15 @@ Write-Host ""
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "InstallationFlag gesetzt: Starte externes Installations-Skript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\GoogleChromeInstall.ps1 mit Parameter -InstallationFlag" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\GoogleChromeInstall.ps1" `
-		-InstallationFlag
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\GoogleChromeInstall.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Externes Installations-Skript mit -InstallationFlag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\GoogleChromeInstall.ps1" -Level "DEBUG"
 }
 elseif($Install -eq $true){
     Write_LogEntry -Message "Install Flag true: Starte externes Installations-Skript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\GoogleChromeInstall.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\GoogleChromeInstall.ps1"
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\GoogleChromeInstall.ps1"
     Write_LogEntry -Message "Externes Installations-Skript für Google Chrome aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\GoogleChromeInstall.ps1" -Level "DEBUG"
 }
 Write-Host ""
 Write_LogEntry -Message "Skript-Ende erreicht. Vor Footer." -Level "INFO"
 
-# === Logger-Footer: automatisch eingefügt ===
-if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "Script beendet: $($ProgramName) - $($ScriptType)" -Level "INFO"
-    Finalize_LogSession | Out-Null
-}
-# === Ende Logger-Footer ===
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

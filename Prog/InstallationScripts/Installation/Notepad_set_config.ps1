@@ -1,16 +1,24 @@
-# DeployToolkit helpers
-$dtPath = Join-Path (Split-Path $PSScriptRoot -Parent) "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
-} else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
-}
+﻿﻿param(
+    [switch]$InstallationFlag
+)
 
-﻿# Path to your config.xml
+$ProgramName = "Notepad++ Config"
+$ScriptType  = "Install"
+$parentPath  = Split-Path -Path $PSScriptRoot -Parent
+
+$dtPath = Join-Path $parentPath "Modules\DeployToolkit\DeployToolkit.psm1"
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit nicht gefunden: $dtPath" }
+Import-Module -Name $dtPath -Force -ErrorAction Stop
+
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $parentPath
+Write_LogEntry -Message "Script gestartet mit InstallationFlag: $InstallationFlag" -Level "INFO"
+
+$config = Get-DeployConfigOrExit -ScriptRoot $parentPath -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
+
+# Path to your config.xml
 $configPath = "$env:APPDATA\Notepad++\config.xml"
 
 # 1) Launch & graceful close so config.xml is generated
@@ -104,3 +112,7 @@ if (-not $foundDark) {
 $newLines | Set-Content $configPath
 
 #Write-Host "All done. Four GUIConfig entries updated (or injected)."
+
+
+Write_LogEntry -Message "Notepad++ Konfiguration aktualisiert" -Level "SUCCESS"
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
