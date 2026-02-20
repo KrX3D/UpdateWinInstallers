@@ -202,18 +202,13 @@ Write-Host ""
 if($InstallationFlag){
     $targetFile = "$Serverip\Daten\Prog\InstallationScripts\Installation\AdvancedPortScannerInstallation.ps1"
     Write_LogEntry -Message "InstallationFlag gesetzt. Starte externes Installationsskript: $($targetFile) mittels $($PSHostPath)" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\AdvancedPortScannerInstallation.ps1" `
-		-InstallationFlag
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AdvancedPortScannerInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Aufruf externes Skript beendet: $($targetFile)" -Level "DEBUG"
 }
 elseif($Install -eq $true){
     $targetFile2 = "$Serverip\Daten\Prog\InstallationScripts\Installation\GitInsAdvancedPortScannerInstallationtall.ps1"
     Write_LogEntry -Message "Install=true. Starte externes Installationsskript: $($targetFile2) mittels $($PSHostPath)" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\GitInsAdvancedPortScannerInstallationtall.ps1"
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\GitInsAdvancedPortScannerInstallationtall.ps1"
     Write_LogEntry -Message "Aufruf externes Skript beendet: $($targetFile2)" -Level "DEBUG"
 }
 Write-Host ""

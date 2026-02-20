@@ -221,25 +221,18 @@ Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: 
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "InstallationFlag gesetzt. Starte Installationsskript mit Flag: $($Serverip)\Daten\Prog\InstallationScripts\Installation\Powershell7Install.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\Powershell7Install.ps1" `
-		-InstallationFlag
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\Powershell7Install.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Installationsskript mit Flag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\Powershell7Install.ps1" -Level "DEBUG"
 } elseif($Install -eq $true){
     Write_LogEntry -Message "Starte Installationsskript (Update) ohne Flag: $($Serverip)\Daten\Prog\InstallationScripts\Installation\Powershell7Install.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\Powershell7Install.ps1"
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\Powershell7Install.ps1"
     Write_LogEntry -Message "Installationsskript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\Powershell7Install.ps1" -Level "DEBUG"
 }
 
 Write-Host ""
 Write-Host "Ändere Powershell.exe zu Pwsh.exe in allen Tasks, wenn PS7 installiert ist." -foregroundcolor "magenta"
 Write_LogEntry -Message "Starte Aufgabenplanungs-Update-Skript: $($Serverip)\Daten\Customize_Windows\Scripte\Aufgabenplannung_powershell_to_pwsh.ps1" -Level "INFO"
-& $PSHostPath `
-	-NoLogo -NoProfile -ExecutionPolicy Bypass `
-	-File "$Serverip\Daten\Customize_Windows\Scripte\Aufgabenplannung_powershell_to_pwsh.ps1"
+Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Customize_Windows\Scripte\Aufgabenplannung_powershell_to_pwsh.ps1"
 Write_LogEntry -Message "Aufgabenplanungs-Update-Skript aufgerufen: $($Serverip)\Daten\Customize_Windows\Scripte\Aufgabenplannung_powershell_to_pwsh.ps1" -Level "DEBUG"
 
 Write-Host ""

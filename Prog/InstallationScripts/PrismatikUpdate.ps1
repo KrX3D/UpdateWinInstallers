@@ -217,16 +217,11 @@ if ($null -ne $Path) {
 # Install/Update ausführen
 if ($InstallationFlag) {
     Write_LogEntry -Message "InstallationFlag gesetzt. Starte Installationsskript mit Flag." -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Installationsskript mit Flag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" -Level "DEBUG"
 } elseif($Install -eq $true){
     Write_LogEntry -Message "Starte Installationsskript (Update) ohne Flag: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1"
     Write_LogEntry -Message "Installationsskript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" -Level "DEBUG"
 }
 Write-Host ""

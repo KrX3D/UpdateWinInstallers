@@ -299,17 +299,12 @@ Write-Host ""
 # Install if needed
 if ($InstallationFlag) {
     Write_LogEntry -Message "InstallationFlag gesetzt - starte Installation..." -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\FiiOInstallation.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\FiiOInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Installation-Script aufgerufen mit InstallationFlag" -Level "INFO"
 }
 elseif ($Install -eq $true) {
     Write_LogEntry -Message "Update erforderlich - starte Installation..." -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\FiiOInstallation.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\FiiOInstallation.ps1"
     Write_LogEntry -Message "Installation-Script für Update aufgerufen" -Level "INFO"
 } else {
     Write_LogEntry -Message "Keine Installation oder Update erforderlich" -Level "INFO"

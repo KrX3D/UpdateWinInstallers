@@ -297,16 +297,11 @@ if ($installedVersion) {
 # Install if requested or required
 if ($InstallationFlag) {
     Write_LogEntry -Message "InstallationFlag gesetzt; rufe Installationsskript mit Flag auf." -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\NotepadPlusPlusInstallation.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\NotepadPlusPlusInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Installationsskript mit Flag aufgerufen." -Level "DEBUG"
 } elseif ($Install) {
     Write_LogEntry -Message "Starte externes Installationsskript (Update) ohne Flag." -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\NotepadPlusPlusInstallation.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\NotepadPlusPlusInstallation.ps1"
     Write_LogEntry -Message "Externes Installationsskript aufgerufen (Update)." -Level "DEBUG"
 }
 

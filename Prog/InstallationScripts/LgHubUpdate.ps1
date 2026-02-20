@@ -270,16 +270,11 @@ Write-Host ""
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "InstallationFlag gesetzt: Starte externes Installations-Skript mit -InstallationFlag: $($Serverip)\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" `
-		-InstallationFlag
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Externes Installations-Skript mit -InstallationFlag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -Level "DEBUG"
 } elseif($Install -eq $true){
     Write_LogEntry -Message "Starte externes Installations-Skript (Update): $($Serverip)\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1"
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1"
     Write_LogEntry -Message "Externes Installations-Skript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -Level "DEBUG"
 }
 Write_LogEntry -Message "Script-Ende erreicht. Vor Footer." -Level "INFO"

@@ -182,18 +182,13 @@ Write-Host ""
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "Install-Schritt: InstallationFlag gesetzt. Starte externes Installations-Skript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\Fusion360Installation.ps1 mit -InstallationFlag" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\Fusion360Installation.ps1" `
-		-InstallationFlag
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\Fusion360Installation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Install-Schritt: Externes Installations-Skript mit -InstallationFlag aufgerufen." -Level "DEBUG"
 }
 elseif($Install -eq $true){
     Write_LogEntry -Message "Install-Schritt: Install-Flag true. Starte externes Installations-Skript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\Fusion360Installation.ps1" -Level "INFO"
 	#Uninstall + install
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\Fusion360Installation.ps1"
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\Fusion360Installation.ps1"
     Write_LogEntry -Message "Install-Schritt: Externes Installations-Skript ohne Parameter aufgerufen." -Level "DEBUG"
 }
 Write-Host ""

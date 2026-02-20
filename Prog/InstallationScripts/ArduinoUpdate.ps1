@@ -261,17 +261,12 @@ Write-Host ""
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "InstallationFlag gesetzt. Starte externes Installationsskript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\ArduinoInstall.ps1 mittels $($PSHostPath)" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\ArduinoInstall.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\ArduinoInstall.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Aufruf externes Skript beendet: $($Serverip)\Daten\Prog\InstallationScripts\Installation\ArduinoInstall.ps1" -Level "DEBUG"
 }
 elseif($Install -eq $true){
     Write_LogEntry -Message "Install=true. Starte externes Installationsskript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\ArduinoInstall.ps1 mittels $($PSHostPath)" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\ArduinoInstall.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\ArduinoInstall.ps1"
     Write_LogEntry -Message "Aufruf externes Skript beendet: $($Serverip)\Daten\Prog\InstallationScripts\Installation\ArduinoInstall.ps1" -Level "DEBUG"
 }
 Write-Host ""

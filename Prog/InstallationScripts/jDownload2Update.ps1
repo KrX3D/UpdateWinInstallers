@@ -375,10 +375,7 @@ Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: 
 if ($InstallationFlag) {
     Write_LogEntry -Message "InstallationFlag gesetzt. Starte Installationsskript mit Flag." -Level "INFO"
     try {
-        & $PSHostPath `
-            -NoLogo -NoProfile -ExecutionPolicy Bypass `
-            -File "$Serverip\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" `
-            -InstallationFlag
+        Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" -PassInstallationFlag
         Write_LogEntry -Message "Installationsskript mit Flag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" -Level "DEBUG"
     } catch {
         Write_LogEntry -Message "Fehler beim Aufruf des Installationsskriptes mit Flag: $($_.Exception.Message)" -Level "ERROR"
@@ -387,9 +384,7 @@ if ($InstallationFlag) {
 elseif ($Install -eq $true) {
     Write_LogEntry -Message "Starte Installationsskript (Update) ohne Flag." -Level "INFO"
     try {
-        & $PSHostPath `
-            -NoLogo -NoProfile -ExecutionPolicy Bypass `
-            -File "$Serverip\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1"
+        Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1"
         Write_LogEntry -Message "Installationsskript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" -Level "DEBUG"
     } catch {
         Write_LogEntry -Message "Fehler beim Aufruf des Installationsskriptes: $($_.Exception.Message)" -Level "ERROR"

@@ -205,18 +205,13 @@ Write-Host ""
 if($InstallationFlag){
     $installerPath = "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1"
     Write_LogEntry -Message "InstallationFlag gesetzt. Starte externes Installationsskript: $($installerPath) mittels $($PSHostPath)" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1" `
-		-InstallationFlag
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Aufruf externes Skript beendet: $($installerPath)" -Level "DEBUG"
 }
 elseif($Install -eq $true){
     $installerPath2 = "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1"
     Write_LogEntry -Message "Install=true. Starte externes Installationsskript: $($installerPath2) mittels $($PSHostPath)" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1"
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1"
     Write_LogEntry -Message "Aufruf externes Skript beendet: $($installerPath2)" -Level "DEBUG"
 }
 

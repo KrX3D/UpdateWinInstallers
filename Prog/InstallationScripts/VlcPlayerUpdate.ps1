@@ -246,16 +246,11 @@ Write-Host ""
 #Install if needed
 if ($InstallationFlag) {
     Write_LogEntry -Message "Starte externes Installationsscript (InstallationFlag) via $($PSHostPath)" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\VlcPlayerInstall.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\VlcPlayerInstall.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Rückkehr von VlcPlayerInstall.ps1 nach InstallationFlag-Aufruf" -Level "DEBUG"
 } elseif ($Install -eq $true) {
     Write_LogEntry -Message "Starte externes Installationsscript (Install) via $($PSHostPath)" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\VlcPlayerInstall.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\VlcPlayerInstall.ps1"
     Write_LogEntry -Message "Rückkehr von VlcPlayerInstall.ps1 nach Install-Aufruf" -Level "DEBUG"
 }
 Write-Host ""

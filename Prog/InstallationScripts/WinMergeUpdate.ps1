@@ -317,16 +317,11 @@ Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: 
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "Starte externes Installationsskript mit -InstallationFlag" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\WinMergeInstallation.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\WinMergeInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Externer Aufruf abgeschlossen: WinMergeInstallation.ps1 (mit -InstallationFlag)" -Level "DEBUG"
 } elseif($Install -eq $true){
     Write_LogEntry -Message "Starte externes Installationsskript (Install=true)" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\WinMergeInstallation.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\WinMergeInstallation.ps1"
     Write_LogEntry -Message "Externer Aufruf abgeschlossen: WinMergeInstallation.ps1" -Level "DEBUG"
 }
 Write-Host ""

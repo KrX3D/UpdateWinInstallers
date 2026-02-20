@@ -296,16 +296,11 @@ Write_LogEntry -Message "Installationsentscheidung: Install = $($Install); Insta
 # Install if requested
 if ($InstallationFlag) {
     Write_LogEntry -Message "InstallationFlag gesetzt: Starte externes Installations-Skript mit -InstallationFlag" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\KicadInstallation.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\KicadInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Externes Installations-Skript mit -InstallationFlag aufgerufen." -Level "DEBUG"
 } elseif ($Install) {
     Write_LogEntry -Message "Starte externes Installations-Skript (Update)" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\KicadInstallation.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\KicadInstallation.ps1"
     Write_LogEntry -Message "Externes Installations-Skript aufgerufen (Update)." -Level "DEBUG"
 }
 

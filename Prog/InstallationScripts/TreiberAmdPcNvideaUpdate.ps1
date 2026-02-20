@@ -377,17 +377,12 @@ if($PCName -eq "KrX-AMD-PC"){
 	#Install if needed
 	if($InstallationFlag){
 		Write_LogEntry -Message "InstallationFlag gesetzt -> Starte Installationsscript mit Flag." -Level "INFO"
-		& $PSHostPath `
-			-NoLogo -NoProfile -ExecutionPolicy Bypass `
-			-File "$Serverip\Daten\Prog\InstallationScripts\Installation\TreiberAmdPcNvideaInstall.ps1" `
-			-InstallationFlag
+		Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\TreiberAmdPcNvideaInstall.ps1" -PassInstallationFlag
 		Write_LogEntry -Message "Externes Installationsscript aufgerufen mit -InstallationFlag: $($PSHostPath) $($Serverip)\Daten\Prog\InstallationScripts\Installation\TreiberAmdPcNvideaInstall.ps1" -Level "DEBUG"
 	}
 	elseif($Install -eq $true){
 		Write_LogEntry -Message "Update erforderlich -> Starte Installationsscript." -Level "INFO"
-		& $PSHostPath `
-			-NoLogo -NoProfile -ExecutionPolicy Bypass `
-			-File "$Serverip\Daten\Prog\InstallationScripts\Installation\TreiberAmdPcNvideaInstall.ps1"
+		Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\TreiberAmdPcNvideaInstall.ps1"
 		Write_LogEntry -Message "Externes Installationsscript aufgerufen: $($PSHostPath) $($Serverip)\Daten\Prog\InstallationScripts\Installation\TreiberAmdPcNvideaInstall.ps1" -Level "DEBUG"
 	}
 	Write-Host ""

@@ -332,16 +332,11 @@ Write-Host ""
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "InstallationFlag gesetzt: Starte externes Installations-Skript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\HassAgentInstallation.ps1 mit Parameter -InstallationFlag" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\HassAgentInstallation.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\HassAgentInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Externes Installations-Skript mit -InstallationFlag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\HassAgentInstallation.ps1" -Level "DEBUG"
 } elseif($Install -eq $true){
     Write_LogEntry -Message "Install Flag true: Starte externes Installations-Skript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\HassAgentInstallation.ps1" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\HassAgentInstallation.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\HassAgentInstallation.ps1"
     Write_LogEntry -Message "Externes Installations-Skript für Hass.Agent aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\HassAgentInstallation.ps1" -Level "DEBUG"
 }
 

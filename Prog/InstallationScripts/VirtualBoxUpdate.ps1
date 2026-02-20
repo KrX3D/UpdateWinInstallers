@@ -403,10 +403,7 @@ Write-Host ""
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "Starte externes Installationsscript (InstallationFlag) via $($PSHostPath)" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\VirtualBoxInstall.ps1" `
-		-InstallationFlag
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\VirtualBoxInstall.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Rückkehr von VirtualBoxInstall.ps1 nach InstallationFlag-Aufruf" -Level "DEBUG"
 }
 

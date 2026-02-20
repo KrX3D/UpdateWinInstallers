@@ -327,10 +327,7 @@ Write-Host ""
 
 if ($InstallationFlag) {
     Write_LogEntry -Message "Starte externes Installationsskript mit -InstallationFlag. Aufruf: $($PSHostPath) -File $($Serverip)\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1 -InstallationFlag" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1" `
-        -InstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Externer Aufruf (InstallationFlag) beendet." -Level "DEBUG"
 }
 
