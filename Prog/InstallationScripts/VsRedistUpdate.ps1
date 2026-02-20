@@ -186,7 +186,7 @@ if ($latestVersion) {
             $wc = New-Object System.Net.WebClient
             $wc.Headers.Add("user-agent", $headers['User-Agent'])
             if ($headers.ContainsKey('Authorization')) { $wc.Headers.Add("Authorization", $headers['Authorization']) }
-            $wc.DownloadFile($downloadLinkX86, $downloadPathX86)
+            [void](Invoke-DownloadFile -Url $downloadLinkX86 -OutFile $downloadPathX86)
             Write_LogEntry -Message "Download abgeschlossen X86: $($downloadPathX86)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message ("Fehler beim Herunterladen X86 {0}: {1}" -f $downloadLinkX86, $_.Exception.Message) -Level "ERROR"
@@ -222,7 +222,7 @@ if ($latestVersion) {
             $wc2 = New-Object System.Net.WebClient
             $wc2.Headers.Add("user-agent", $headers['User-Agent'])
             if ($headers.ContainsKey('Authorization')) { $wc2.Headers.Add("Authorization", $headers['Authorization']) }
-            $wc2.DownloadFile($downloadLinkX64, $downloadPathX64)
+            [void](Invoke-DownloadFile -Url $downloadLinkX64 -OutFile $downloadPathX64)
             Write_LogEntry -Message "Download abgeschlossen X64: $($downloadPathX64)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message ("Fehler beim Herunterladen X64 {0}: {1}" -f $downloadLinkX64, $_.Exception.Message) -Level "ERROR"
@@ -359,7 +359,7 @@ if (($Installx86 -eq $true) -or $InstallationFlagX86) {
     Write_LogEntry -Message "Gefundene VC x86 Installer: $($vcInstaller)" -Level "DEBUG"
     if ($vcInstaller) {
         try {
-            Start-Process -FilePath $vcInstaller.FullName -ArgumentList '/install','/passive','/qn','/norestart' -Wait -NoNewWindow
+            [void](Invoke-InstallerFile -FilePath $vcInstaller.FullName -Arguments '/install','/passive','/qn','/norestart' -Wait)
             Write_LogEntry -Message "Prozess für VC x86 Installer abgeschlossen: $($vcInstaller.FullName)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message ("Fehler beim Starten des VC x86 Installers {0}: {1}" -f $vcInstaller.FullName, $_.Exception.Message) -Level "ERROR"
@@ -377,7 +377,7 @@ if (($Installx64 -eq $true) -or $InstallationFlagX64) {
     Write_LogEntry -Message "Gefundene VC x64 Installer: $($vcInstaller64)" -Level "DEBUG"
     if ($vcInstaller64) {
         try {
-            Start-Process -FilePath $vcInstaller64.FullName -ArgumentList '/install','/passive','/qn','/norestart' -Wait -NoNewWindow
+            [void](Invoke-InstallerFile -FilePath $vcInstaller64.FullName -Arguments '/install','/passive','/qn','/norestart' -Wait)
             Write_LogEntry -Message "Prozess für VC x64 Installer abgeschlossen: $($vcInstaller64.FullName)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message ("Fehler beim Starten des VC x64 Installers {0}: {1}" -f $vcInstaller64.FullName, $_.Exception.Message) -Level "ERROR"

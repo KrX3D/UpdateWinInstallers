@@ -127,7 +127,7 @@ if ($versionText -ne '' -and ($versionText -gt  $localVersion)){
 
     try {
         Write_LogEntry -Message "Starte Download von $($downloadURL) nach $($downloadPath)" -Level "INFO"
-        $webClient.DownloadFile($downloadURL, $downloadPath)
+        [void](Invoke-DownloadFile -Url $downloadURL -OutFile $downloadPath)
         Write_LogEntry -Message "Download von $($downloadURL) abgeschlossen nach $($downloadPath)" -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler beim Download von $($downloadURL): $($_)" -Level "ERROR"

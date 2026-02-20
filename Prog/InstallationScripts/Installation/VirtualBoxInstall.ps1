@@ -65,7 +65,7 @@ if ($InstallationFlag -eq $true) {
 	Write_LogEntry -Message "Visual C++ Installer gesucht: $($Serverip)\Daten\Prog\VirtualBox\VC*.exe; Gefunden: $($vcInstaller.FullName)" -Level "DEBUG"
 	if ($vcInstaller) {
 		Write_LogEntry -Message "Starte Visual C++ Installer: $($vcInstaller.FullName)" -Level "INFO"
-		Start-Process -FilePath $vcInstaller.FullName -ArgumentList '/install', '/passive', '/qn', '/norestart' -Wait
+		[void](Invoke-InstallerFile -FilePath $vcInstaller.FullName -Arguments '/install', '/passive', '/qn', '/norestart' -Wait)
         Write_LogEntry -Message "Visual C++ Installer beendet: $($vcInstaller.FullName)" -Level "SUCCESS"
 	}
 }
@@ -77,7 +77,7 @@ Write_LogEntry -Message "VirtualBox Installer gesucht: $($Serverip)\Daten\Prog\V
 if (($InstallationFlag -eq $true) -or (($virtualBoxInstaller) -and ($InstallVirtBox -eq $true))) {
 	Write-Host "VirtualBox wird installiert" -foregroundcolor "magenta"
     Write_LogEntry -Message "VirtualBox Installationsbedingung erfüllt. Starte Installer: $($virtualBoxInstaller.FullName)" -Level "INFO"
-	Start-Process -FilePath $virtualBoxInstaller.FullName -ArgumentList '--silent', '--ignore-reboot', '--msiparams "VBOX_INSTALLQUICKLAUNCHSHORTCUT=0"' -Wait
+	[void](Invoke-InstallerFile -FilePath $virtualBoxInstaller.FullName -Arguments '--silent', '--ignore-reboot', '--msiparams "VBOX_INSTALLQUICKLAUNCHSHORTCUT=0"' -Wait)
     Write_LogEntry -Message "VirtualBox Installer ausgeführt: $($virtualBoxInstaller.FullName)" -Level "SUCCESS"
 	
 	$InstallationFileVirtualBox = "C:\Program Files\Oracle\VirtualBox\VirtualBox.exe"

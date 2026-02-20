@@ -131,7 +131,7 @@ foreach ($Installer in $installerList) {
     Write_LogEntry -Message "Browser-Monitor Job gestartet: Id=$($browserMonitor.Id)" -Level "DEBUG"
 
     Write_LogEntry -Message "Starte Estlcam Installer: $($Installer.FullName) mit Argument '/S' (synchronously)" -Level "INFO"
-    Start-Process -FilePath $Installer.FullName -ArgumentList '/S' -Wait
+    [void](Invoke-InstallerFile -FilePath $Installer.FullName -Arguments '/S' -Wait)
     Write_LogEntry -Message "Installer-Prozess beendet für: $($Installer.FullName)" -Level "SUCCESS"
 
 	# Signal the job to stop gracefully
