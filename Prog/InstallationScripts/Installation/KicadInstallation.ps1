@@ -109,7 +109,7 @@ Das Skript wird abgebrochen.
 Write_LogEntry -Message "Starte Installation von KiCad $($kiCadVersion) mit Installer: $($installer.FullName)" -Level "INFO"
 Write-Host ""
 Write-Host "KiCad $kiCadVersion wird installiert" -foregroundcolor "magenta"
-Start-Process -FilePath $installer.FullName -ArgumentList '/S','/allusers' -Wait
+[void](Invoke-InstallerFile -FilePath $installer.FullName -Arguments '/S','/allusers' -Wait)
 Write_LogEntry -Message "Installationsprozess beendet für: $($installer.FullName)" -Level "INFO"
 
 # Remove KiCad $kiCadVersion Start Menu shortcuts if they exist

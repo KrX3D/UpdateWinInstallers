@@ -65,7 +65,7 @@ $ImageGlassMsi = Get-ChildItem "$Serverip\Daten\Prog\ImageGlass*.msi" | Select-O
 Write_LogEntry -Message "Gefundene ImageGlass MSI-Datei: $($ImageGlassMsi)" -Level "DEBUG"
 
 Write_LogEntry -Message "Starte MSI-Installation via msiexec für: $($ImageGlassMsi)" -Level "INFO"
-Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$ImageGlassMsi`" /qn /quiet /norestart" -Wait
+[void](Invoke-InstallerFile -FilePath "msiexec.exe" -Arguments "/i `"$ImageGlassMsi`" /qn /quiet /norestart" -Wait)
 Write_LogEntry -Message "msiexec Prozess beendet für: $($ImageGlassMsi)" -Level "SUCCESS"
 
 $publicDesktopPattern = Join-Path $env:PUBLIC "Desktop\ImageGlass*.lnk"

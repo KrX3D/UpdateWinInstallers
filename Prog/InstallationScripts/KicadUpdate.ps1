@@ -256,7 +256,7 @@ function CheckAndUpdateKiCad {
         $wc.Headers.Add("User-Agent", "InstallationScripts/1.0")
         if ($GithubToken) { $wc.Headers.Add("Authorization", "token $GithubToken") }
         Write_LogEntry -Message "Starte Download: $InstallerURL -> $DownloadPath" -Level "INFO"
-        $wc.DownloadFile($InstallerURL, $DownloadPath)
+        [void](Invoke-DownloadFile -Url $InstallerURL -OutFile $DownloadPath)
         Write_LogEntry -Message "Download abgeschlossen: $DownloadPath" -Level "SUCCESS"
     } catch {
         Write_LogEntry -Message "Fehler beim Herunterladen $InstallerURL : $($_.Exception.Message)" -Level "ERROR"
