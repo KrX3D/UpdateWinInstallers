@@ -301,6 +301,14 @@ function Invoke-InstallerDownload {
     [int]$Retries = 1,
     [int]$RetryDelaySeconds = 2,
     [System.Net.SecurityProtocolType]$SecurityProtocol,
+    [switch]$ConfirmDownload,
+    [switch]$ReplaceOld,
+    [string[]]$RemoveFiles,
+    [string]$RemovePattern,
+    [string[]]$KeepFiles,
+    [switch]$EmitHostStatus,
+    [string]$SuccessHostMessage,
+    [string]$FailureHostMessage,
     [string]$Context = 'Download'
   )
 
@@ -313,10 +321,20 @@ function Invoke-InstallerDownload {
     $ok = Invoke-DownloadFile -Url $Url -OutFile $OutFile -Retries $Retries -RetryDelaySeconds $RetryDelaySeconds
   }
 
+  if ($ok -and $ConfirmDownload) {
+    $ok = Confirm-DownloadedInstaller -DownloadedFile $OutFile -ReplaceOld:$ReplaceOld -RemoveFiles $RemoveFiles -RemovePattern $RemovePattern -KeepFiles $KeepFiles -Context $Context
+  }
+
   if ($ok) {
     Write-DeployLog -Message "[$Context] Download erfolgreich: $OutFile" -Level 'SUCCESS'
+    if ($EmitHostStatus -and $SuccessHostMessage) {
+      Write-Host $SuccessHostMessage -ForegroundColor Green
+    }
   } else {
     Write-DeployLog -Message "[$Context] Download fehlgeschlagen: $OutFile" -Level 'ERROR'
+    if ($EmitHostStatus -and $FailureHostMessage) {
+      Write-Host $FailureHostMessage -ForegroundColor Red
+    }
   }
 
   return $ok
@@ -383,6 +401,59 @@ function Compare-VersionState {
     InstallerVersion = $InstallerVersion
     IsInstalled      = [bool]$InstalledVersion
     UpdateRequired   = [bool]($InstalledVersion -and $InstallerVersion -and ($InstalledVersion -lt $InstallerVersion))
+  }
+}
+
+function Show-VersionStateSummary {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)]$State,
+    [Parameter(Mandatory)][string]$ProgramName,
+    [string]$Context = 'VersionCompare'
+  )
+
+  if ($State.UpdateRequired) {
+    Write-Host "`t`tVeraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+    Write-DeployLog -Message "[$Context] Veraltete Version erkannt. Update wird gestartet." -Level 'INFO'
+  } else {
+    Write-Host "`t`tInstallierte Version ist aktuell." -ForegroundColor DarkGray
+    Write-DeployLog -Message "[$Context] Installierte Version ist aktuell." -Level 'INFO'
+  }
+
+  Write-Host ""
+  return [bool]$State.UpdateRequired
+}
+
+function Get-InstallerVersionForComparison {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$PathPattern,
+    [Parameter(Mandatory)][string]$FileNameRegex,
+    [scriptblock]$Convert,
+    [string]$Context = 'InstallerVersion',
+    [string]$Description = 'Lokale Installationsdatei Version'
+  )
+
+  try {
+    $installerFile = Get-InstallerFilePath -PathPattern $PathPattern
+    $version = if ($installerFile) {
+      Get-InstallerFileVersion -FilePath $installerFile.FullName -FileNameRegex $FileNameRegex -Source FileName -Convert $Convert
+    } else {
+      $null
+    }
+
+    Write-DeployLog -Message "[$Context] $Description aus Dateiname extrahiert: $version" -Level 'DEBUG'
+
+    return [pscustomobject]@{
+      InstallerFile = $installerFile
+      Version       = $version
+    }
+  } catch {
+    Write-DeployLog -Message "[$Context] Fehler beim Ermitteln der Installationsdatei Version: $($_.Exception.Message)" -Level 'ERROR'
+    return [pscustomobject]@{
+      InstallerFile = $null
+      Version       = $null
+    }
   }
 }
 

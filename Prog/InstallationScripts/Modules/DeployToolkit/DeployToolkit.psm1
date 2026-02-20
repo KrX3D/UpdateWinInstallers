@@ -47,5 +47,8 @@ Export-ModuleMember -Function @(
   'Write-DeployLog',
   'Stop-DeployContext',
   'Get-SharedConfigPath',
+  'Get-DeployConfigOrExit',
+  'Get-InstallerVersionForComparison',
+  'Show-VersionStateSummary',
   'Import-DeployConfig'
 )

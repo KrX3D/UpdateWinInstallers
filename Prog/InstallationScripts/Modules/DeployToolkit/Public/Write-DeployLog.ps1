@@ -45,3 +45,25 @@ function Import-DeployConfig {
   Write-DeployLog -Message "Konfigurationsdatei geladen: $configPath" -Level 'INFO'
   return $config
 }
+
+
+function Get-DeployConfigOrExit {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$ScriptRoot,
+    [Parameter(Mandatory)][string]$ProgramName,
+    [string]$FinalizeMessage
+  )
+
+  try {
+    return Import-DeployConfig -ScriptRoot $ScriptRoot
+  } catch {
+    Write-Host ""
+    Write-Host "Konfigurationsdatei konnte nicht geladen werden." -ForegroundColor Red
+    Write-DeployLog -Message "Script beendet wegen fehlender Konfiguration: $($_.Exception.Message)" -Level 'ERROR'
+
+    $msg = if ($FinalizeMessage) { $FinalizeMessage } else { "$ProgramName - Script beendet" }
+    Stop-DeployContext -FinalizeMessage $msg
+    exit
+  }
+}

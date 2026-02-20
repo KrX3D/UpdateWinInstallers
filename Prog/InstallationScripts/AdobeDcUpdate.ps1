@@ -21,18 +21,10 @@ Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoo
 Write-DeployLog -Message "Script gestartet mit InstallationFlag: $InstallationFlag" -Level 'INFO'
 Write-DeployLog -Message "ProgramName: $ProgramName, ScriptType: $ScriptType" -Level 'DEBUG'
 
-try {
-    $config = Import-DeployConfig -ScriptRoot $PSScriptRoot
-    $InstallationFolder = $config.InstallationFolder
-    $Serverip = $config.Serverip
-    $PSHostPath = $config.PSHostPath
-} catch {
-    Write-Host ""
-    Write-Host "Konfigurationsdatei konnte nicht geladen werden." -ForegroundColor "Red"
-    Write-DeployLog -Message "Script beendet wegen fehlender Konfiguration: $_" -Level 'ERROR'
-    Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
-    exit
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 # Define the path to the Adobe Acrobat Reader installer
 $installerPath = "$InstallationFolder\AcroRdrDC*_de_DE.exe"
@@ -41,14 +33,13 @@ Write_LogEntry -Message "Installer path gesetzt: $installerPath" -Level "DEBUG"
 $versionPattern = 'AcroRdrDC(?:x64)?(\d+)_(?:de_DE|en_US|MUI)\.exe'
 Write_LogEntry -Message "Version pattern gesetzt: $versionPattern" -Level "DEBUG"
 
-$installerFile = Get-InstallerFilePath -PathPattern $installerPath
+$localInstallerInfo = Get-InstallerVersionForComparison -PathPattern $installerPath -FileNameRegex $versionPattern -Convert { param($v) Convert-AdobeToVersion $v } -Context $ProgramName -Description 'Lokale Installationsdatei Version'
+$installerFile = $localInstallerInfo.InstallerFile
+$fileVersion = $localInstallerInfo.Version
 
 # Check if the installer file exists
 if ($installerFile) {
     Write_LogEntry -Message "Installer gefunden: $($installerFile.Name)" -Level "INFO"
-    # Extract the version number from the file name
-    $fileVersion = Get-InstallerFileVersion -FilePath $installerFile.FullName -FileNameRegex $versionPattern -Source FileName -Convert { param($v) Convert-AdobeToVersion $v }
-    Write_LogEntry -Message "Lokale Installationsdatei Version aus Dateiname extrahiert: $fileVersion" -Level "DEBUG"
 
     # Check if there is a newer version available online
     #https://www.adobe.com/devnet-docs/acrobatetk/tools/ReleaseNotesDC/index.html
@@ -95,12 +86,10 @@ if ($installerFile) {
                 Write_LogEntry -Message "Download URL konstruiert: $downloadUrl" -Level "DEBUG"
                 Write_LogEntry -Message "Download Pfad gesetzt: $downloadPath" -Level "DEBUG"
 
-                $downloadOk = Invoke-InstallerDownload -Url $downloadUrl -OutFile $downloadPath -Context $ProgramName
-                if ($downloadOk -and (Confirm-DownloadedInstaller -DownloadedFile $downloadPath -ReplaceOld -RemoveFiles @($installerFile.FullName) -Context $ProgramName)) {
-                    Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor "Green"
+                $downloadOk = Invoke-InstallerDownload -Url $downloadUrl -OutFile $downloadPath -Context $ProgramName -ConfirmDownload -ReplaceOld -RemoveFiles @($installerFile.FullName) -EmitHostStatus -SuccessHostMessage "$ProgramName wurde aktualisiert.." -FailureHostMessage "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert."
+                if ($downloadOk) {
                     Write_LogEntry -Message "$ProgramName wurde aktualisiert: $downloadPath" -Level "SUCCESS"
                 } else {
-                    Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor "Red"
                     Write_LogEntry -Message "Download fehlgeschlagen: $downloadPath" -Level "ERROR"
                 }
             } else {
@@ -122,14 +111,8 @@ if ($installerFile) {
 Write-Host ""
 
 #Check Installed Version / Install if needed
-try {
-    $latestInstaller = Get-InstallerFilePath -PathPattern $installerPath
-    $localVersion = if ($latestInstaller) { Get-InstallerFileVersion -FilePath $latestInstaller.FullName -FileNameRegex $versionPattern -Source FileName -Convert { param($v) Convert-AdobeToVersion $v } } else { $null }
-    Write_LogEntry -Message "Lokale Installationsdatei Version (für Vergleiche) ist: $localVersion" -Level "DEBUG"
-} catch {
-    $localVersion = $null
-    Write_LogEntry -Message "Fehler beim Ermitteln der lokalen Installationsdatei Version: $_" -Level "ERROR"
-}
+$comparisonInstaller = Get-InstallerVersionForComparison -PathPattern $installerPath -FileNameRegex $versionPattern -Convert { param($v) Convert-AdobeToVersion $v } -Context $ProgramName -Description 'Lokale Installationsdatei Version (für Vergleiche)'
+$localVersion = $comparisonInstaller.Version
 
 $installedInfo = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
 $installedVersion = if ($installedInfo) { $installedInfo.Version } else { $null }
@@ -145,13 +128,7 @@ if ($installedVersion) {
 }
 
 $state = Compare-VersionState -InstalledVersion $installedVersion -InstallerVersion $localVersionObj -Context $ProgramName
-if ($state.UpdateRequired) {
-    Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor "magenta"
-    Write_LogEntry -Message "Veraltete Version erkannt. Update wird gestartet." -Level "INFO"
-} else {
-    Write-Host "		Installierte Version ist aktuell." -ForegroundColor "DarkGray"
-}
-Write-Host ""
+Show-VersionStateSummary -State $state -ProgramName $ProgramName -Context $ProgramName | Out-Null
 
 #Install if needed
 
