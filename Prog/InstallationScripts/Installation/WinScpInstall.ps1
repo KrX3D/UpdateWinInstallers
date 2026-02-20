@@ -62,7 +62,7 @@ Write_LogEntry -Message "Suche nach Installer unter: $($installerPath)" -Level "
 $installer = Get-ChildItem -Path $installerPath | Select-Object -First 1
 if ($installer) {
     Write_LogEntry -Message "Gefundene WinSCP Installer-Datei: $($installer.FullName)" -Level "INFO"
-    Start-Process -FilePath $installer.FullName -ArgumentList "/VERYSILENT", "/NORESTART", "/ALLUSERS" -Wait
+    [void](Invoke-InstallerFile -FilePath $installer.FullName -Arguments "/VERYSILENT", "/NORESTART", "/ALLUSERS" -Wait)
     Write_LogEntry -Message "Start-Process ausgeführt für WinSCP Installer: $($installer.FullName)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Kein WinSCP-Installer gefunden unter: $($installerPath)" -Level "WARNING"

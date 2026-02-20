@@ -73,7 +73,7 @@ function Download-File {
         if ($Referer) { $wc.Headers.Add("Referer", $Referer) }
         $wc.Headers.Add("Accept", $accept)
 
-        $wc.DownloadFile($Url, $OutFile)
+        [void](Invoke-DownloadFile -Url $Url -OutFile $OutFile)
         $wc.Dispose()
         Write_LogEntry -Message "Download via WebClient erfolgreich: $OutFile" -Level "SUCCESS"
         return $true
@@ -84,7 +84,7 @@ function Download-File {
             Write_LogEntry -Message "Versuche Download via Invoke-WebRequest: $Url -> $OutFile" -Level "DEBUG"
             $hdr = @{ "User-Agent" = $ua; "Accept" = $accept }
             if ($Referer) { $hdr["Referer"] = $Referer }
-            Invoke-WebRequest -Uri $Url -OutFile $OutFile -Headers $hdr -UseBasicParsing -ErrorAction Stop
+            [void](Invoke-DownloadFile -Url $Url -OutFile $OutFile)
             Write_LogEntry -Message "Download via Invoke-WebRequest erfolgreich: $OutFile" -Level "SUCCESS"
             return $true
         } catch {

@@ -65,7 +65,7 @@ if ($installFilePath) {
     Write_LogEntry -Message "Gefundene Installationsdatei: $($installFilePath)" -Level "INFO"
     Write-Host "Agent Ransack Pro wird installiert" -foregroundcolor "magenta"
     Write_LogEntry -Message "Starte MSI-Installer: $($installFilePath) mit Argumenten: /qn /norestart" -Level "INFO"
-    Start-Process -FilePath $installFilePath -ArgumentList "/qn", "/norestart" -Wait
+    [void](Invoke-InstallerFile -FilePath $installFilePath -Arguments "/qn", "/norestart" -Wait)
     Write_LogEntry -Message "Installer-Aufruf beendet für: $($installFilePath)" -Level "SUCCESS"
 } else {
     Write_LogEntry -Message "Keine Installationsdatei gefunden für Muster $($localFileWildcard) in $($InstallationFolder)" -Level "WARNING"
