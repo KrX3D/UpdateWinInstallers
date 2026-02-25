@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$InstallationFlagX86 = $false,
     [switch]$InstallationFlagX64 = $false
 )
@@ -6,51 +6,19 @@ param(
 $ProgramName = "VC Redist x86"
 $ScriptType  = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
+$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
+Import-Module $dtPath -Force -ErrorAction Stop
 
-if (Test-Path $modulePath) {
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
-
-    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
-        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
-    }
-    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
-
-    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
-        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
-    }
-}
-# === Ende Logger-Header ===
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlagX86: $($InstallationFlagX86); InstallationFlagX64: $($InstallationFlagX64)" -Level "INFO"
 Write_LogEntry -Message "ProgramName gesetzt auf: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
 
-# DeployToolkit helpers
-$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
-} else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
-}
-
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
-
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-    Write_LogEntry -Message "Konfigurationsdatei geladen: $($configPath)" -Level "INFO"
-} else {
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
-    exit 1
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 # === TLS / Headers für Webzugriffe ===
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
@@ -186,7 +154,7 @@ if ($latestVersion) {
             $wc = New-Object System.Net.WebClient
             $wc.Headers.Add("user-agent", $headers['User-Agent'])
             if ($headers.ContainsKey('Authorization')) { $wc.Headers.Add("Authorization", $headers['Authorization']) }
-            $wc.DownloadFile($downloadLinkX86, $downloadPathX86)
+            [void](Invoke-DownloadFile -Url $downloadLinkX86 -OutFile $downloadPathX86)
             Write_LogEntry -Message "Download abgeschlossen X86: $($downloadPathX86)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message ("Fehler beim Herunterladen X86 {0}: {1}" -f $downloadLinkX86, $_.Exception.Message) -Level "ERROR"
@@ -222,7 +190,7 @@ if ($latestVersion) {
             $wc2 = New-Object System.Net.WebClient
             $wc2.Headers.Add("user-agent", $headers['User-Agent'])
             if ($headers.ContainsKey('Authorization')) { $wc2.Headers.Add("Authorization", $headers['Authorization']) }
-            $wc2.DownloadFile($downloadLinkX64, $downloadPathX64)
+            [void](Invoke-DownloadFile -Url $downloadLinkX64 -OutFile $downloadPathX64)
             Write_LogEntry -Message "Download abgeschlossen X64: $($downloadPathX64)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message ("Fehler beim Herunterladen X64 {0}: {1}" -f $downloadLinkX64, $_.Exception.Message) -Level "ERROR"
@@ -359,7 +327,7 @@ if (($Installx86 -eq $true) -or $InstallationFlagX86) {
     Write_LogEntry -Message "Gefundene VC x86 Installer: $($vcInstaller)" -Level "DEBUG"
     if ($vcInstaller) {
         try {
-            Start-Process -FilePath $vcInstaller.FullName -ArgumentList '/install','/passive','/qn','/norestart' -Wait -NoNewWindow
+            [void](Invoke-InstallerFile -FilePath $vcInstaller.FullName -Arguments '/install','/passive','/qn','/norestart' -Wait)
             Write_LogEntry -Message "Prozess für VC x86 Installer abgeschlossen: $($vcInstaller.FullName)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message ("Fehler beim Starten des VC x86 Installers {0}: {1}" -f $vcInstaller.FullName, $_.Exception.Message) -Level "ERROR"
@@ -377,7 +345,7 @@ if (($Installx64 -eq $true) -or $InstallationFlagX64) {
     Write_LogEntry -Message "Gefundene VC x64 Installer: $($vcInstaller64)" -Level "DEBUG"
     if ($vcInstaller64) {
         try {
-            Start-Process -FilePath $vcInstaller64.FullName -ArgumentList '/install','/passive','/qn','/norestart' -Wait -NoNewWindow
+            [void](Invoke-InstallerFile -FilePath $vcInstaller64.FullName -Arguments '/install','/passive','/qn','/norestart' -Wait)
             Write_LogEntry -Message "Prozess für VC x64 Installer abgeschlossen: $($vcInstaller64.FullName)" -Level "SUCCESS"
         } catch {
             Write_LogEntry -Message ("Fehler beim Starten des VC x64 Installers {0}: {1}" -f $vcInstaller64.FullName, $_.Exception.Message) -Level "ERROR"
@@ -390,10 +358,4 @@ if (($Installx64 -eq $true) -or $InstallationFlagX64) {
 Write-Host ""
 Write_LogEntry -Message "Script-Ende erreicht" -Level "INFO"
 
-# === Logger-Footer: automatisch eingefügt ===
-if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
-    Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
-} else {
-    Write_LogEntry -Message "$ProgramName - Script beendet" -Level "INFO"
-}
-# === Ende Logger-Footer ===
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

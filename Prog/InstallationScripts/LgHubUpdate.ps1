@@ -1,55 +1,23 @@
-param(
+﻿param(
     [switch]$InstallationFlag = $false
 )
 
 $ProgramName = "Logitech G HUB"
 $ScriptType  = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
+$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
+Import-Module $dtPath -Force -ErrorAction Stop
 
-if (Test-Path $modulePath) {
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
-
-    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
-        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
-    }
-    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
-
-    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
-        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
-    }
-}
-# === Ende Logger-Header ===
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType); PSScriptRoot: $($PSScriptRoot)" -Level "DEBUG"
 
-# DeployToolkit helpers
-$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
-} else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
-}
-
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
-
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-    Write_LogEntry -Message "Konfigurationsdatei gefunden und geladen: $($configPath)" -Level "INFO"
-} else {
-    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    exit
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 #"C:\Program Files\Google\Chrome\Application\chrome.exe" --headless --run-all-compositor-stages-before-draw --print-to-pdf=C:\Users\KrX\Downloads\output.pdf "https://support.logi.com/hc/en-us/articles/360025298133" --virtual-time-budget=60000
 #"C:\Program Files\Google\Chrome\Application\chrome.exe" --headless --run-all-compositor-stages-before-draw --virtual-time-budget=60000  --dump-dom "https://support.logi.com/hc/en-us/articles/360025298133" > source.html
@@ -60,7 +28,7 @@ $filenamePattern = "lghub_installer*.exe"
 Write_LogEntry -Message "InstallationFolder: $($InstallationFolder); FilenamePattern: $($filenamePattern)" -Level "DEBUG"
 
 # Get the latest local file matching the pattern
-$latestFile = Get-ChildItem -Path $InstallationFolder -Filter $filenamePattern | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$latestFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter $filenamePattern
 Write_LogEntry -Message "Gefundene lokale Datei (latestFile exists): $($([bool]$latestFile)); Pfad: $($($latestFile.FullName -as [string]))" -Level "DEBUG"
 
 if ($latestFile) {
@@ -195,7 +163,7 @@ if ($latestFile) {
                     Write_LogEntry -Message "Starte Download von $($downloadUrl) nach $($downloadPath)" -Level "INFO"
 		        	#Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
                     $webClient = New-Object System.Net.WebClient
-                    $webClient.DownloadFile($downloadUrl, $downloadPath)
+                    [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
                     $webClient.Dispose()
                     Write_LogEntry -Message "Download abgeschlossen; prüfe Existenz: $($downloadPath)" -Level "DEBUG"
                     
@@ -245,7 +213,7 @@ Write_LogEntry -Message "Ermittle aktuellste lokale Datei nochmals für Installa
 Write-Host ""
 
 #Check Installed Version / Install if needed
-$FoundFile = Get-ChildItem -Path $InstallationFolder -Filter $filenamePattern | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$FoundFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter $filenamePattern
 
 if ($FoundFile) {
 	$localVersion = $FoundFile.Name -replace 'lghub_installer_|\.exe', ''
@@ -302,25 +270,15 @@ Write-Host ""
 #Install if needed
 if($InstallationFlag){
     Write_LogEntry -Message "InstallationFlag gesetzt: Starte externes Installations-Skript mit -InstallationFlag: $($Serverip)\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" `
-		-InstallationFlag
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Externes Installations-Skript mit -InstallationFlag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -Level "DEBUG"
 } elseif($Install -eq $true){
     Write_LogEntry -Message "Starte externes Installations-Skript (Update): $($Serverip)\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1"
+	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1"
     Write_LogEntry -Message "Externes Installations-Skript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\LgHubInstallation.ps1" -Level "DEBUG"
 }
 Write_LogEntry -Message "Script-Ende erreicht. Vor Footer." -Level "INFO"
 
 Write-Host ""
 
-# === Logger-Footer: automatisch eingefügt ===
-if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "Script beendet: $($ProgramName) - $($ScriptType)" -Level "INFO"
-    Finalize_LogSession | Out-Null
-}
-# === Ende Logger-Footer ===
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
