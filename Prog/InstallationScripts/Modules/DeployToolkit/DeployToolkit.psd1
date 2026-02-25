@@ -1,6 +1,6 @@
 ﻿@{
   RootModule        = 'DeployToolkit.psm1'
-  ModuleVersion     = '1.0.0'
+  ModuleVersion     = '1.1.0'
   GUID              = '3f7c4f35-9c8b-4f4a-88d7-2c6d8f0d1c01'
   Author            = 'KrX'
   CompanyName       = 'Personal'
@@ -18,11 +18,14 @@
     'Test-InstallerUpdateRequired',
     'Get-VersionFromFileName',
     'ConvertTo-VersionSafe',
+    'ConvertTo-TrimmedVersionString',
     'Convert-7ZipDigitsToVersion',
     'Convert-AdobeToVersion',
     'Convert-AdobeVersionToDigits',
     'Invoke-WebRequestCompat',
     'Get-OnlineVersionFromContent',
+    'Get-OnlineInstallerLink',
+    'Get-GitHubLatestRelease',
     'Remove-FilesSafe',
     'Remove-PathSafe',
     'Copy-FileSafe',
@@ -35,6 +38,7 @@
     'Get-RegistryVersion',
     'Get-InstallerExecutionPlan',
     'Invoke-InstallerScript',
+    'Invoke-ZipInstallerUpdate',
     'Invoke-ProgramUninstall',
     'Invoke-ProgramInstallFromPattern',
     'Remove-StartMenuEntries',

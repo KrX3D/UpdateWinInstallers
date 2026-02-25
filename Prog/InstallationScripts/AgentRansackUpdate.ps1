@@ -1,9 +1,9 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
 $ProgramName = "Agent Ransack"
-$ScriptType = "Update"
+$ScriptType  = "Update"
 
 $dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
 if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
@@ -11,213 +11,105 @@ Import-Module $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$config            = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
 $InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
-
-Write_LogEntry -Message "ProgramName gesetzt auf: $($ProgramName)" -Level "DEBUG"
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
 
 $localFileWildcard = "agentransack*.msi"
-Write_LogEntry -Message "Lokales Datei-Wildcard gesetzt auf: $($localFileWildcard)" -Level "DEBUG"
+$onlineVersionUrl  = "https://www.mythicsoft.com/agentransack/"
+$installScript     = "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1"
 
-$TempFolder = "$env:TEMP"
-Write_LogEntry -Message "Temp-Ordner: $($TempFolder)" -Level "DEBUG"
+# ── Local version ─────────────────────────────────────────────────────────────
+# Version comes from the filename (build number, e.g. "3084")
+$localFilePath = Get-ChildItem -Path $InstallationFolder -Filter $localFileWildcard |
+                 Select-Object -First 1 -ExpandProperty FullName
 
-$onlineVersionUrl = "https://www.mythicsoft.com/agentransack/"
-Write_LogEntry -Message "Online-Version URL gesetzt auf: $($onlineVersionUrl)" -Level "DEBUG"
+$localVersion = if ($localFilePath) {
+    [System.IO.Path]::GetFileNameWithoutExtension($localFilePath) `
+        -replace 'agentransack_', '' -replace 'x64_', ''
+} else { $null }
 
-# Get the latest version from the online website
-Write_LogEntry -Message "Rufe Online-Seite $($onlineVersionUrl) ab, um Version zu ermitteln." -Level "INFO"
-$onlineVersionHtml = Invoke-WebRequest -Uri $onlineVersionUrl -UseBasicParsing
-if ($null -ne $onlineVersionHtml) {
-    Write_LogEntry -Message "Online-Seite abgerufen. Content-Länge: $($onlineVersionHtml.Content.Length)" -Level "DEBUG"
-} else {
-    Write_LogEntry -Message "Fehler: Keine Antwort von $($onlineVersionUrl)" -Level "WARNING"
-}
+Write-DeployLog -Message "Lokale Datei: $localFilePath | Version: $localVersion" -Level 'DEBUG'
 
-$onlineVersion = $null
-try {
-    $onlineVersion = $onlineVersionHtml.Content | Select-String -Pattern "agentransack_(\d+)" | ForEach-Object { $_.Matches.Groups[1].Value } | Select-Object -First 1
-    Write_LogEntry -Message "Online-Version extrahiert: $($onlineVersion)" -Level "DEBUG"
-} catch {
-    Write_LogEntry -Message "Fehler beim Extrahieren der Online-Version: $($_)" -Level "ERROR"
-}
+# ── Online version ────────────────────────────────────────────────────────────
+# Returns raw build-number string, e.g. "3084"
+$onlineInfo   = Get-OnlineVersionInfo -Url $onlineVersionUrl -Regex @('agentransack_(\d+)') -Context $ProgramName
+$onlineVersion = $onlineInfo.Version   # raw string via internal -ReturnRaw
 
-# Get the local file matching the wildcard pattern
-Write_LogEntry -Message "Suche lokale Datei im Installationsordner mit Filter: $($localFileWildcard)" -Level "DEBUG"
-$localFilePath = Get-ChildItem -Path $InstallationFolder -Filter $localFileWildcard | Select-Object -First 1 -ExpandProperty FullName
-
-if (-not $localFilePath) {
-    Write_LogEntry -Message "Keine lokale Datei gefunden für Pattern: $($localFileWildcard) in $($InstallationFolder)" -Level "WARNING"
-    #Write-Host "No local file found matching the wildcard pattern: $localFileWildcard"
-} else {
-    Write_LogEntry -Message "Lokale Datei gefunden: $($localFilePath)" -Level "INFO"
-
-    # Retrieve local file version from the filename
-    try {
-        $localVersion = [System.IO.Path]::GetFileNameWithoutExtension($localFilePath) -replace 'agentransack_', '' -replace 'x64_', ''
-        Write_LogEntry -Message "Lokale Version aus Dateiname extrahiert: $($localVersion)" -Level "DEBUG"
-    } catch {
-        Write_LogEntry -Message "Fehler beim Ermitteln der lokalen Version aus Dateiname $($localFilePath): $($_)" -Level "ERROR"
-    }
-
-    # Compare versions
-    if ($null -ne $onlineVersion -and $null -ne $localVersion) {
-        try {
-            $isLocalVersionNewer = [int]$onlineVersion -gt [int]$localVersion
-            Write_LogEntry -Message "Versionsvergleich: Online $($onlineVersion) vs Lokal $($localVersion) => isLocalVersionNewer = $($isLocalVersionNewer)" -Level "DEBUG"
-        } catch {
-            Write_LogEntry -Message "Fehler beim Vergleich der Versionen Online:$($onlineVersion) Lokal:$($localVersion): $($_)" -Level "ERROR"
-            $isLocalVersionNewer = $false
-        }
-    } else {
-        Write_LogEntry -Message "Versionen konnten nicht verglichen werden (Online:$($onlineVersion) Lokal:$($localVersion))." -Level "WARNING"
-        $isLocalVersionNewer = $false
-    }
-
+# ── Compare and download ──────────────────────────────────────────────────────
+if ($localFilePath -and $onlineVersion) {
     Write-Host ""
-    Write-Host "Lokale Version: $localVersion" -foregroundcolor "Cyan"
-    Write-Host "Online Version: $onlineVersion" -foregroundcolor "Cyan"
+    Write-Host "Lokale Version: $localVersion" -ForegroundColor Cyan
+    Write-Host "Online Version: $onlineVersion" -ForegroundColor Cyan
     Write-Host ""
 
-    if (!$isLocalVersionNewer) {
-        Write_LogEntry -Message "Kein Online Update verfügbar oder lokale Version ist aktuell. Online:$($onlineVersion) Lokal:$($localVersion)" -Level "INFO"
-        Write-Host "Kein Online Update verfügbar. $ProgramName is aktuell." -foregroundcolor "DarkGray"
-    } else {
-        Write_LogEntry -Message "Update verfügbar: Online $($onlineVersion) > Lokal $($localVersion). Starte Download." -Level "INFO"
-        # Download the newer version
+    if ([int]$onlineVersion -gt [int]$localVersion) {
         $downloadUrl = "https://download.mythicsoft.com/flp/$onlineVersion/agentransack_x64_msi_$onlineVersion.zip"
-        $downloadPath = Join-Path $TempFolder "agentransack_x64_msi_$onlineVersion.zip"
-        Write_LogEntry -Message "Download-URL: $($downloadUrl)" -Level "DEBUG"
-        Write_LogEntry -Message "Zieldatei für Download: $($downloadPath)" -Level "DEBUG"
-        
-        try {
-            #Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
-            $webClient = New-Object System.Net.WebClient
-            [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
-            $webClient.Dispose()
-            Write_LogEntry -Message "Download abgeschlossen (temporär): $($downloadPath)" -Level "DEBUG"
-        } catch {
-            Write_LogEntry -Message "Fehler beim Herunterladen von $($downloadUrl): $($_)" -Level "ERROR"
+
+        $ok = Invoke-ZipInstallerUpdate `
+            -Url         $downloadUrl `
+            -ExtractTo   $InstallationFolder `
+            -RemoveFiles @($localFilePath) `
+            -Context     $ProgramName
+
+        if ($ok) {
+            Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
+            Write-DeployLog -Message "$ProgramName aktualisiert auf Version $onlineVersion." -Level 'SUCCESS'
+        } else {
+            Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
         }
-		
-		# Check if the file was completely downloaded
-		if (Test-Path $downloadPath) {
-            Write_LogEntry -Message "Downloaddatei existiert: $($downloadPath)" -Level "SUCCESS"
-			#Write-Host "Removing the old version..."
-            try {
-                Remove-Item -Path $localFilePath -Force
-                Write_LogEntry -Message "Alte Datei entfernt: $($localFilePath)" -Level "INFO"
-            } catch {
-                Write_LogEntry -Message "Fehler beim Entfernen der alten Datei $($localFilePath): $($_)" -Level "ERROR"
-            }
-			
-			# Extract the downloaded version
-            try {
-                Write_LogEntry -Message "Entpacke $($downloadPath) nach $($InstallationFolder)" -Level "INFO"
-                Expand-Archive -Path $downloadPath -DestinationPath $InstallationFolder -Force
-                Write_LogEntry -Message "Entpacken erfolgreich: $($downloadPath) -> $($InstallationFolder)" -Level "SUCCESS"
-            } catch {
-                Write_LogEntry -Message "Fehler beim Entpacken $($downloadPath): $($_)" -Level "ERROR"
-            }
-			
-			#Write-Host "Removing the zip file..."
-            try {
-                Remove-Item -Path $downloadPath -Force
-                Write_LogEntry -Message "Zip-Datei entfernt: $($downloadPath)" -Level "DEBUG"
-            } catch {
-                Write_LogEntry -Message "Fehler beim Entfernen der Zip-Datei $($downloadPath): $($_)" -Level "WARNING"
-            }
-
-            Write-Host "$ProgramName wurde aktualisiert.." -foregroundcolor "green"
-            Write_LogEntry -Message "$($ProgramName) wurde aktualisiert. Neue Dateien im Ordner: $($InstallationFolder)" -Level "SUCCESS"
-		} else {
-			Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktuallisiert." -foregroundcolor "red"
-            Write_LogEntry -Message "Download fehlgeschlagen, Datei nicht gefunden: $($downloadPath)" -Level "ERROR"
-		}
-		
+    } else {
+        Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
     }
+} elseif (-not $localFilePath) {
+    Write-DeployLog -Message "Keine lokale Installationsdatei gefunden." -Level 'WARNING'
 }
 
 Write-Host ""
 
-#Check Installed Version / Install if neded
-Write_LogEntry -Message "Ermittle lokale Datei für Installations-Check mit Filter: $($localFileWildcard) in $($InstallationFolder)" -Level "DEBUG"
-$localFilePath = Get-ChildItem -Path $InstallationFolder -Filter $localFileWildcard | Select-Object -First 1 -ExpandProperty FullName
+# ── Re-evaluate local file after potential update ─────────────────────────────
+$localFilePath = Get-ChildItem -Path $InstallationFolder -Filter $localFileWildcard |
+                 Select-Object -First 1 -ExpandProperty FullName
+$localVersion  = if ($localFilePath) {
+    [System.IO.Path]::GetFileNameWithoutExtension($localFilePath) `
+        -replace 'agentransack_', '' -replace 'x64_', ''
+} else { $null }
 
-if ($null -ne $localFilePath) {
-    try {
-        $localVersion = [System.IO.Path]::GetFileNameWithoutExtension($localFilePath) -replace 'agentransack_', '' -replace 'x64_', ''
-        Write_LogEntry -Message "Lokale Installationsdatei: $($localFilePath), Version: $($localVersion)" -Level "DEBUG"
-    } catch {
-        Write_LogEntry -Message "Fehler beim Ermitteln der lokalen Installationsversion aus $($localFilePath): $($_)" -Level "ERROR"
-    }
-} else {
-    Write_LogEntry -Message "Keine lokale Installationsdatei für Check gefunden mit Pattern: $($localFileWildcard)" -Level "WARNING"
-}
+# ── Installed version (build-number taken from part [2] of DisplayVersion) ────
+$installedInfo = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
+$Install       = $false
 
-#$Path  = Get-ChildItem 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -like $ProgramName + '*' }
+if ($installedInfo) {
+    # DisplayVersion is like "2.1.3084"; take the 3rd segment as the build number
+    $installedVersion = ($installedInfo.VersionRaw -split '\.')[2]
 
-$RegistryPaths = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-Write_LogEntry -Message "Registry-Pfade für Prüfung gesetzt: $($RegistryPaths -join ', ')" -Level "DEBUG"
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localVersion" -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $installedVersion | Lokal: $localVersion" -Level 'INFO'
 
-$Path = foreach ($RegPath in $RegistryPaths) {
-    if (Test-Path $RegPath) {
-        Write_LogEntry -Message "Registry-Pfad vorhanden: $($RegPath)" -Level "DEBUG"
-        Get-ChildItem $RegPath | Get-ItemProperty | Where-Object { $_.DisplayName -like "$ProgramName*" }
-    } else {
-        Write_LogEntry -Message "Registry-Pfad nicht vorhanden: $($RegPath)" -Level "DEBUG"
-    }
-}
-
-if ($null -ne $Path) {
-    $installedVersion = $Path.DisplayVersion | Select-Object -First 1
-	$versionParts = $installedVersion.Split('.')
-	$installedVersion = $versionParts[2]
-
-    Write-Host "$ProgramName ist installiert." -foregroundcolor "green"
-    Write-Host "	Installierte Version:       $installedVersion" -foregroundcolor "Cyan"
-    Write-Host "	Installationsdatei Version: $localVersion" -foregroundcolor "Cyan"
-	Write_LogEntry -Message "Programm installiert. Installierte Version: $($installedVersion). Lokale Installationsdatei Version: $($localVersion)" -Level "INFO"
-	
     if ($installedVersion -lt $localVersion) {
-        Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -foregroundcolor "magenta"
-		$Install = $true
-        Write_LogEntry -Message "Installationsentscheidung: Update erforderlich (Install = $($Install))." -Level "INFO"
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
+        $Install = $true
     } elseif ($installedVersion -eq $localVersion) {
-        Write-Host "		Installierte Version ist aktuell." -foregroundcolor "DarkGray"
-		$Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Keine Aktion erforderlich (Install = $($Install))." -Level "INFO"
-    } else {
-        #Write-Host "$ProgramName is installed, and the installed version ($installedVersion) is higher than the local version ($localVersion)."
-		$Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install gesetzt auf $($Install) (installierte Version > lokale Version)." -Level "WARNING"
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
     }
 } else {
-    #Write-Host "$ProgramName is not installed on this system."
-	$Install = $false
-    Write_LogEntry -Message "Programm $($ProgramName) nicht in Registry gefunden. Install = $($Install)" -Level "INFO"
-}
-Write-Host ""
-
-#Install if needed
-if($InstallationFlag){
-    $installerPath = "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1"
-    Write_LogEntry -Message "InstallationFlag gesetzt. Starte externes Installationsskript: $($installerPath) mittels $($PSHostPath)" -Level "INFO"
-	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1" -PassInstallationFlag
-    Write_LogEntry -Message "Aufruf externes Skript beendet: $($installerPath)" -Level "DEBUG"
-}
-elseif($Install -eq $true){
-    $installerPath2 = "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1"
-    Write_LogEntry -Message "Install=true. Starte externes Installationsskript: $($installerPath2) mittels $($PSHostPath)" -Level "INFO"
-	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AgentRansackInstall.ps1"
-    Write_LogEntry -Message "Aufruf externes Skript beendet: $($installerPath2)" -Level "DEBUG"
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'INFO'
 }
 
 Write-Host ""
 
-# ===== Logger-Footer (BEGIN) =====
-Write_LogEntry -Message "Script beendet." -Level "INFO"
+# ── Install if needed ─────────────────────────────────────────────────────────
+if ($InstallationFlag) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag
+} elseif ($Install) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript
+}
+
+Write-Host ""
 Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
-# ===== Logger-Footer (END) =====

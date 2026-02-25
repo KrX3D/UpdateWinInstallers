@@ -67,3 +67,33 @@ function Convert-AdobeVersionToDigits {
   $build = "{0:D5}" -f $Version.Build
   return "$major$minor$build"
 }
+
+function ConvertTo-TrimmedVersionString {
+  <#
+  .SYNOPSIS
+    Takes the first N components of a version string and removes leading zeros
+    from the last component only - matching the Advanced Port Scanner convention.
+  .EXAMPLE
+    ConvertTo-TrimmedVersionString "2.5.03.0" -Parts 3  => "2.5.3"
+  #>
+  [CmdletBinding()]
+  param(
+    [string]$Value,
+    [int]$Parts = 3
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+
+  $split = $Value.Split('.')
+  $taken = for ($i = 0; $i -lt $Parts -and $i -lt $split.Count; $i++) {
+    $part = $split[$i]
+    if ($i -eq ($Parts - 1)) {
+      # Strip leading zeros only from the last kept component
+      $part -replace '^0+(\d)', '$1'
+    } else {
+      $part
+    }
+  }
+
+  return $taken -join '.'
+}

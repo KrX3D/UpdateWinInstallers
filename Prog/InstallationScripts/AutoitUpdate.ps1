@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
@@ -10,346 +10,211 @@ if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
 Import-Module $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
+Write-DeployLog -Message "Script gestartet mit InstallationFlag: $InstallationFlag" -Level 'INFO'
 
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType); PSScriptRoot: $($PSScriptRoot)" -Level "DEBUG"
+$config            = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = "$($config.InstallationFolder)\AutoIt_Scripts"
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
 
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
-$InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
-
-# Ensure TLS 1.2 for subsequent requests
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
-# Utility: Robust herunterladen (WebClient mit Browser-Header, Invoke-WebRequest, BITS-Fallback)
-function Download-File {
-    param(
-        [Parameter(Mandatory=$true)][string]$Url,
-        [Parameter(Mandatory=$true)][string]$OutFile,
-        [string]$Referer = $null
-    )
 
-    $ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    $accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+$autoItDownloadUrl  = "https://www.autoitscript.com/site/autoit/downloads/"
+$sciTEDownloadUrl   = "https://www.autoitscript.com/cgi-bin/getfile.pl?../autoit3/scite/download/SciTE4AutoIt3.exe"
+$installScript      = "$Serverip\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1"
 
-    try {
-        Write_LogEntry -Message "Versuche Download via WebClient: $Url -> $OutFile" -Level "DEBUG"
-        $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", $ua)
-        if ($Referer) { $wc.Headers.Add("Referer", $Referer) }
-        $wc.Headers.Add("Accept", $accept)
-
-        [void](Invoke-DownloadFile -Url $Url -OutFile $OutFile)
-        $wc.Dispose()
-        Write_LogEntry -Message "Download via WebClient erfolgreich: $OutFile" -Level "SUCCESS"
-        return $true
-    } catch {
-        Write_LogEntry -Message "WebClient-Download fehlgeschlagen: $($_.Exception.Message)" -Level "DEBUG"
-        # Fallback: Invoke-WebRequest
-        try {
-            Write_LogEntry -Message "Versuche Download via Invoke-WebRequest: $Url -> $OutFile" -Level "DEBUG"
-            $hdr = @{ "User-Agent" = $ua; "Accept" = $accept }
-            if ($Referer) { $hdr["Referer"] = $Referer }
-            [void](Invoke-DownloadFile -Url $Url -OutFile $OutFile)
-            Write_LogEntry -Message "Download via Invoke-WebRequest erfolgreich: $OutFile" -Level "SUCCESS"
-            return $true
-        } catch {
-            Write_LogEntry -Message "Invoke-WebRequest fehlgeschlagen: $($_.Exception.Message)" -Level "DEBUG"
-            # Fallback 2: BITS
-            try {
-                Write_LogEntry -Message "Versuche Download via BITS (Start-BitsTransfer): $Url -> $OutFile" -Level "DEBUG"
-                Start-BitsTransfer -Source $Url -Destination $OutFile -ErrorAction Stop
-                Write_LogEntry -Message "Download via BITS erfolgreich: $OutFile" -Level "SUCCESS"
-                return $true
-            } catch {
-                Write_LogEntry -Message "Alle Download-Methoden fehlgeschlagen: $($_.Exception.Message)" -Level "ERROR"
-                return $false
-            }
-        }
-    }
-}
-
-$autoItDownloadUrl = "https://www.autoitscript.com/site/autoit/downloads/"
-$sciTEDownloadUrl = "https://www.autoitscript.com/cgi-bin/getfile.pl?../autoit3/scite/download/SciTE4AutoIt3.exe"
-
-Write_LogEntry -Message "AutoIt Download-URL: $($autoItDownloadUrl)" -Level "DEBUG"
-Write_LogEntry -Message "SciTE Download-URL: $($sciTEDownloadUrl)" -Level "DEBUG"
-
-$InstallationFolder = "$InstallationFolder\AutoIt_Scripts"
-Write_LogEntry -Message "InstallationFolder gesetzt auf: $($InstallationFolder)" -Level "DEBUG"
-
+# ── Local file discovery ──────────────────────────────────────────────────────
 $localAutoItFile = Get-ChildItem -Path "$InstallationFolder\autoit-v3-setup*.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
-$localSciTEFile = Get-ChildItem -Path "$InstallationFolder\SciTE4AutoIt3*.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
+$localSciTEFile  = Get-ChildItem -Path "$InstallationFolder\SciTE4AutoIt3*.exe"  -ErrorAction SilentlyContinue | Select-Object -Last 1
 
-Write_LogEntry -Message "Lokale AutoIt Datei: $(if ($localAutoItFile) { $localAutoItFile.FullName } else { 'None' })" -Level "DEBUG"
-Write_LogEntry -Message "Lokale SciTE Datei: $(if ($localSciTEFile) { $localSciTEFile.FullName } else { 'None' })" -Level "DEBUG"
+$localAutoItVersion = if ($localAutoItFile) {
+    Get-InstallerFileVersion -FilePath $localAutoItFile.FullName -Source FileVersion
+} else { $null }
 
-$localAutoItVersion = $null
-$localSciTEVersion = $null
-if ($localAutoItFile) {
-    try {
-        $localAutoItVersion = (Get-ItemProperty -Path $localAutoItFile.FullName).VersionInfo.FileVersion
-        Write_LogEntry -Message "Lokale AutoIt Version ermittelt: $($localAutoItVersion)" -Level "DEBUG"
-    } catch {
-        Write_LogEntry -Message "Fehler beim Lesen der Dateiinfo der lokalen AutoIt-Datei $($localAutoItFile.FullName): $($_)" -Level "ERROR"
-    }
-}
-if ($localSciTEFile) {
-    try {
-        $localSciTEVersion = (Get-ItemProperty -Path $localSciTEFile.FullName).VersionInfo.ProductVersion
-        Write_LogEntry -Message "Lokale SciTE Version ermittelt: $($localSciTEVersion)" -Level "DEBUG"
-    } catch {
-        Write_LogEntry -Message "Fehler beim Lesen der Dateiinfo der lokalen SciTE-Datei $($localSciTEFile.FullName): $($_)" -Level "ERROR"
-    }
-}
+$localSciTEVersion = if ($localSciTEFile) {
+    Get-InstallerFileVersion -FilePath $localSciTEFile.FullName -Source ProductVersion
+} else { $null }
 
-Write_LogEntry -Message "Rufe AutoIt-Downloadseite ab: $($autoItDownloadUrl)" -Level "INFO"
-$autoItPageContent = $null
-try {
-    $autoItPageContent = Invoke-RestMethod -Uri $autoItDownloadUrl -ErrorAction Stop
-    Write_LogEntry -Message "AutoIt Seite abgerufen: Success = $($autoItPageContent -ne $null)" -Level "DEBUG"
-} catch {
-    Write_LogEntry -Message "Fehler beim Abrufen der AutoIt-Seite $($autoItDownloadUrl): $($_)" -Level "ERROR"
-}
+Write-DeployLog -Message "Lokale AutoIt Datei:  $(if ($localAutoItFile) { $localAutoItFile.Name } else { 'None' }) | Version: $localAutoItVersion" -Level 'DEBUG'
+Write-DeployLog -Message "Lokale SciTE Datei:   $(if ($localSciTEFile)  { $localSciTEFile.Name  } else { 'None' }) | Version: $localSciTEVersion"  -Level 'DEBUG'
 
-$autoItDownloadLinkPattern = 'v(\d+\.\d+\.\d+\.\d+)'
-$autoItMatch = [regex]::Match([string]$autoItPageContent, $autoItDownloadLinkPattern)
+# ── Online AutoIt version + download link ─────────────────────────────────────
+# Version found in page content: v3.3.16.1 style
+# Download link is a relative URL appended to the getfile.pl base
+$autoItInfo = Get-OnlineInstallerLink `
+    -Url           $autoItDownloadUrl `
+    -LinkRegex     '(?<=href="\/cgi-bin\/getfile\.pl\?)([^"]+autoit-v3-setup[^"]*)' `
+    -LinkPrefix    'https://www.autoitscript.com/cgi-bin/getfile.pl?' `
+    -VersionRegex  'v(\d+\.\d+\.\d+\.\d+)' `
+    -VersionSource Content `
+    -Context       'AutoIt'
 
-$relativeUrlPattern = '(?<=href="\/cgi-bin\/getfile\.pl\?)([^"]+autoit-v3-setup[^"]*)'
-$relativeUrlMatch = [regex]::Match([string]$autoItPageContent, $relativeUrlPattern)
+if ($autoItInfo.DownloadUrl -and $autoItInfo.Version) {
+    $onlineAutoItVersion = $autoItInfo.Version
+    $autoItDownloadLink  = $autoItInfo.DownloadUrl
+    $filename            = Split-Path -Path $autoItDownloadLink -Leaf
 
-if ($autoItMatch.Success -and $relativeUrlMatch.Success) {
-    $onlineAutoItVersion = $autoItMatch.Groups[1].Value
-    Write_LogEntry -Message "AutoIt Online Version: $($onlineAutoItVersion); Lokale Version: $($localAutoItVersion)" -Level "INFO"
     Write-Host ""
-    Write-Host "$ProgramName Lokale Version: $localAutoItVersion" -ForegroundColor "Cyan"
-    Write-Host "$ProgramName Online Version: $onlineAutoItVersion" -ForegroundColor "Cyan"
+    Write-Host "$ProgramName Lokale Version: $localAutoItVersion" -ForegroundColor Cyan
+    Write-Host "$ProgramName Online Version: $onlineAutoItVersion" -ForegroundColor Cyan
     Write-Host ""
 
-    $relativeUrl = $relativeUrlMatch.Groups[1].Value
-    $autoItDownloadLink = "https://www.autoitscript.com/cgi-bin/getfile.pl?$relativeUrl"
-    $filename = Split-Path -Path $autoItDownloadLink -Leaf
-
-    Write_LogEntry -Message "Gefundener Download-Link: $($autoItDownloadLink); Filename: $($filename)" -Level "DEBUG"
-
+    # String comparison preserved from original
     if ($onlineAutoItVersion -gt $localAutoItVersion) {
-        $autoItSavePath = Join-Path -Path $env:TEMP -ChildPath $filename
+        $autoItSavePath = Join-Path $env:TEMP $filename
 
-        if (Download-File -Url $autoItDownloadLink -OutFile $autoItSavePath -Referer $autoItDownloadUrl) {
-            Write_LogEntry -Message "Download abgeschlossen: $($autoItSavePath)" -Level "SUCCESS"
-        } else {
-            Write_LogEntry -Message "Download ist fehlgeschlagen. $($filename) wurde nicht aktualisiert." -Level "ERROR"
-        }
+        $ok = Invoke-DownloadFile -Url $autoItDownloadLink -OutFile $autoItSavePath
+        Write-DeployLog -Message "AutoIt Download: $(if ($ok) { 'OK' } else { 'FEHLGESCHLAGEN' })" -Level $(if ($ok) { 'SUCCESS' } else { 'ERROR' })
 
-        if (Test-Path $autoItSavePath) {
-            Write_LogEntry -Message "Download-Datei vorhanden: $($autoItSavePath)" -Level "DEBUG"
-
-            try {
-                if ($autoItSavePath -match '\.zip$') {
+        if ($ok -and (Test-Path $autoItSavePath)) {
+            # If somehow a zip arrives, extract it; exe files pass through as-is
+            if ($autoItSavePath -match '\.zip$') {
+                try {
                     Expand-Archive -Path $autoItSavePath -DestinationPath $env:TEMP -Force
-                    Write_LogEntry -Message "Archiv entpackt nach $($env:TEMP)" -Level "SUCCESS"
-                } else {
-                    Write_LogEntry -Message "Keine Archiv-Datei (kein .zip). Überspringe Entpacken." -Level "DEBUG"
+                    Write-DeployLog -Message "AutoIt Archiv entpackt nach $env:TEMP" -Level 'SUCCESS'
+                } catch {
+                    Write-DeployLog -Message "Entpacken fehlgeschlagen: $($_.Exception.Message)" -Level 'ERROR'
                 }
-            } catch {
-                Write_LogEntry -Message "Fehler beim Entpacken von $($autoItSavePath): $($_)" -Level "ERROR"
             }
 
-            try {
-                if ($localAutoItFile) {
-                    Write_LogEntry -Message "Entferne alte AutoIt Datei: $($localAutoItFile.FullName)" -Level "DEBUG"
-                    Remove-Item -Path $localAutoItFile.FullName -Force
-                    Write_LogEntry -Message "Alte AutoIt Datei entfernt: $($localAutoItFile.FullName)" -Level "SUCCESS"
-                }
+            # Remove old local installer
+            if ($localAutoItFile) { Remove-PathSafe -Path $localAutoItFile.FullName | Out-Null }
 
-                if (Test-Path $autoItSavePath) {
-                    try { Remove-Item -Path $autoItSavePath -Force -ErrorAction SilentlyContinue } catch {}
-                    Write_LogEntry -Message "Temporäre Datei (zip/exe) behandelt: $($autoItSavePath)" -Level "DEBUG"
-                }
-            } catch {
-                Write_LogEntry -Message "Fehler beim Entfernen alter/temporärer Dateien: $($_)" -Level "ERROR"
+            # Locate the new exe (extracted or the downloaded exe itself)
+            $newAutoItFile = (Get-ChildItem -Path "$env:TEMP\autoit*.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1)?.FullName
+            if (-not $newAutoItFile -and $autoItSavePath -match '\.exe$' -and (Test-Path $autoItSavePath)) {
+                $newAutoItFile = $autoItSavePath
             }
 
-            try {
-                $newAutoItFile = $null
-                $cand = Get-ChildItem -Path ("$env:TEMP\autoit*.exe") -ErrorAction SilentlyContinue | Select-Object -Last 1
-                if ($cand) { $newAutoItFile = $cand.FullName } elseif (Test-Path $autoItSavePath -and $autoItSavePath -match '\.exe$') { $newAutoItFile = $autoItSavePath }
-
-                if ($newAutoItFile -and (Test-Path $newAutoItFile)) {
-                    Write_LogEntry -Message "Verschiebe neue AutoIt Datei $($newAutoItFile) -> $($InstallationFolder)" -Level "DEBUG"
-                    Move-Item -Path $newAutoItFile -Destination $InstallationFolder -Force
-                    Write_LogEntry -Message "Neue AutoIt Datei verschoben nach $($InstallationFolder)" -Level "SUCCESS"
-                } else {
-                    Write_LogEntry -Message "Neue AutoIt-Datei nicht gefunden zum Verschieben: $($newAutoItFile)" -Level "ERROR"
-                }
-            } catch {
-                Write_LogEntry -Message "Fehler beim Verschieben der neuen AutoIt-Datei: $($_)" -Level "ERROR"
+            if ($newAutoItFile -and (Test-Path $newAutoItFile)) {
+                Move-Item -Path $newAutoItFile -Destination $InstallationFolder -Force
+                Write-DeployLog -Message "AutoIt Datei verschoben nach $InstallationFolder" -Level 'SUCCESS'
+            } else {
+                Write-DeployLog -Message "Neue AutoIt-Datei nicht gefunden zum Verschieben." -Level 'ERROR'
+                Write-Host "Download ist fehlgeschlagen. $filename wurde nicht aktualisiert." -ForegroundColor Red
             }
-        } else {
-            Write_LogEntry -Message "Download ist fehlgeschlagen. $($filename) wurde nicht aktualisiert." -Level "ERROR"
-            Write-Host "Download ist fehlgeschlagen. $filename wurde nicht aktualisiert." -ForegroundColor "Red"
-        }
 
-        # Download the latest SciTE for AutoIt
-        $sciTESavePath = Join-Path -Path $env:TEMP -ChildPath "SciTE4AutoIt3.exe"
-        if (Download-File -Url $sciTEDownloadUrl -OutFile $sciTESavePath -Referer $autoItDownloadUrl) {
-            Write_LogEntry -Message "SciTE Download abgeschlossen: $($sciTESavePath)" -Level "SUCCESS"
-        } else {
-            Write_LogEntry -Message "Download ist fehlgeschlagen. SciTE4AutoIt3.exe wurde nicht aktualisiert." -Level "ERROR"
-        }
+            # Cleanup temp zip if applicable
+            if ($autoItSavePath -match '\.zip$') { Remove-PathSafe -Path $autoItSavePath | Out-Null }
 
-        if (Test-Path $sciTESavePath) {
-            try {
-                if ($localSciTEFile) {
-                    Write_LogEntry -Message "Entferne alte SciTE Datei: $($localSciTEFile.FullName)" -Level "DEBUG"
-                    Remove-Item -Path $localSciTEFile.FullName -Force
-                    Write_LogEntry -Message "Alte SciTE Datei entfernt: $($localSciTEFile.FullName)" -Level "SUCCESS"
-                }
+            # ── SciTE download (bundled with AutoIt update) ───────────────────
+            $sciTESavePath = Join-Path $env:TEMP "SciTE4AutoIt3.exe"
 
-                $newSciteFile = (Get-ChildItem -Path ("$env:TEMP\SciTE4AutoIt3*.exe") -ErrorAction SilentlyContinue | Select-Object -Last 1).FullName
+            $sciOk = Invoke-DownloadFile -Url $sciTEDownloadUrl -OutFile $sciTESavePath
+            Write-DeployLog -Message "SciTE Download: $(if ($sciOk) { 'OK' } else { 'FEHLGESCHLAGEN' })" -Level $(if ($sciOk) { 'SUCCESS' } else { 'ERROR' })
+
+            if ($sciOk -and (Test-Path $sciTESavePath)) {
+                if ($localSciTEFile) { Remove-PathSafe -Path $localSciTEFile.FullName | Out-Null }
+
+                $newSciteFile = (Get-ChildItem -Path "$env:TEMP\SciTE4AutoIt3*.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1)?.FullName
                 if ($newSciteFile -and (Test-Path $newSciteFile)) {
-                    Write_LogEntry -Message "Verschiebe neue SciTE Datei $($newSciteFile) -> $($InstallationFolder)" -Level "DEBUG"
                     Move-Item -Path $newSciteFile -Destination $InstallationFolder -Force
-                    Write_LogEntry -Message "Neue SciTE Datei verschoben nach $($InstallationFolder)" -Level "SUCCESS"
+                    Write-DeployLog -Message "SciTE Datei verschoben nach $InstallationFolder" -Level 'SUCCESS'
                 } else {
-                    Write_LogEntry -Message "Keine neue SciTE Datei gefunden zum Verschieben." -Level "ERROR"
+                    Write-DeployLog -Message "Neue SciTE-Datei nicht gefunden zum Verschieben." -Level 'ERROR'
+                    Write-Host "Download ist fehlgeschlagen. SciTE4AutoIt3.exe wurde nicht aktualisiert." -ForegroundColor Red
                 }
-            } catch {
-                Write_LogEntry -Message "Fehler beim Verarbeiten von SciTE-Dateien: $($_)" -Level "ERROR"
+            } else {
+                Write-Host "Download ist fehlgeschlagen. SciTE4AutoIt3.exe wurde nicht aktualisiert." -ForegroundColor Red
             }
+
+            Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
+            Write-DeployLog -Message "$ProgramName aktualisiert." -Level 'SUCCESS'
         } else {
-            Write_LogEntry -Message "Download ist fehlgeschlagen. SciTE4AutoIt3.exe wurde nicht aktualisiert." -Level "ERROR"
-            Write-Host "Download ist fehlgeschlagen. SciTE4AutoIt3.exe wurde nicht aktualisiert." -ForegroundColor "Red"
+            Write-Host "Download ist fehlgeschlagen. $filename wurde nicht aktualisiert." -ForegroundColor Red
+            Write-DeployLog -Message "AutoIt Download fehlgeschlagen: $autoItSavePath" -Level 'ERROR'
         }
-
-        Write_LogEntry -Message "$($ProgramName) wurde aktualisiert." -Level "SUCCESS"
-        Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor "Green"
     } else {
-        Write_LogEntry -Message "Kein Online Update verfügbar. $($ProgramName) ist aktuell." -Level "INFO"
-        Write-Host "Kein Online Update verfügbar. $ProgramName is aktuell." -ForegroundColor "DarkGray"
+        Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
     }
 } else {
-    Write_LogEntry -Message "Konnte AutoIt Version oder Download-Link nicht extrahieren von der Seite." -Level "WARNING"
+    Write-DeployLog -Message "Konnte AutoIt Version oder Download-Link nicht ermitteln." -Level 'WARNING'
 }
 
 Write-Host ""
-Write_LogEntry -Message "Prüfe erneut lokale Installationsdateien nach möglichen Änderungen." -Level "DEBUG"
 
+# ── Re-read local versions after potential update ─────────────────────────────
 $localAutoItFile = Get-ChildItem -Path "$InstallationFolder\autoit-v3-setup*.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
-$localSciTEFile = Get-ChildItem -Path "$InstallationFolder\SciTE4AutoIt3*.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
+$localSciTEFile  = Get-ChildItem -Path "$InstallationFolder\SciTE4AutoIt3*.exe"  -ErrorAction SilentlyContinue | Select-Object -Last 1
 
-Write_LogEntry -Message "Erneute Prüfung - lokale AutoIt Datei: $(if ($localAutoItFile) { $localAutoItFile.FullName } else { 'None' })" -Level "DEBUG"
-Write_LogEntry -Message "Erneute Prüfung - lokale SciTE Datei: $(if ($localSciTEFile) { $localSciTEFile.FullName } else { 'None' })" -Level "DEBUG"
+$localAutoItVersion = if ($localAutoItFile) {
+    Get-InstallerFileVersion -FilePath $localAutoItFile.FullName -Source FileVersion
+} else { $null }
 
-try {
-    if ($localAutoItFile) {
-        $localAutoItVersion = (Get-ItemProperty -Path $localAutoItFile.FullName).VersionInfo.FileVersion
-        Write_LogEntry -Message "Ermittelte lokale AutoIt Version: $($localAutoItVersion)" -Level "DEBUG"
-    }
-} catch {
-    Write_LogEntry -Message "Fehler beim Ermitteln der lokalen AutoIt-Version: $($_)" -Level "ERROR"
-}
-try {
-    if ($localSciTEFile) {
-        $localSciTEVersion = (Get-ItemProperty -Path $localSciTEFile.FullName).VersionInfo.ProductVersion
-        Write_LogEntry -Message "Ermittelte lokale SciTE Version: $($localSciTEVersion)" -Level "DEBUG"
-    }
-} catch {
-    Write_LogEntry -Message "Fehler beim Ermitteln der lokalen SciTE-Version: $($_)" -Level "ERROR"
-}
+$localSciTEVersion = if ($localSciTEFile) {
+    Get-InstallerFileVersion -FilePath $localSciTEFile.FullName -Source ProductVersion
+} else { $null }
 
-#$Path  = Get-ChildItem 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -like $ProgramName + '*' }
+# ── AutoIt: installed version check ──────────────────────────────────────────
+$autoItInstallInfo = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
+$AutoItInstall     = $false
 
-$RegistryPaths = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-Write_LogEntry -Message "Durchsuche Registry-Pfade: $($RegistryPaths -join ', ')" -Level "DEBUG"
+if ($autoItInstallInfo) {
+    $installedVersion = $autoItInstallInfo.VersionRaw
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localAutoItVersion" -ForegroundColor Cyan
+    Write-DeployLog -Message "AutoIt installiert: $installedVersion | Lokal: $localAutoItVersion" -Level 'INFO'
 
-$Path = foreach ($RegPath in $RegistryPaths) {
-    if (Test-Path $RegPath) {
-        Write_LogEntry -Message "Registry-Pfad existiert: $($RegPath)" -Level "DEBUG"
-        Get-ChildItem $RegPath | Get-ItemProperty | Where-Object { $_.DisplayName -like "$($ProgramName)*" }
-    } else {
-        Write_LogEntry -Message "Registry-Pfad nicht gefunden: $($RegPath)" -Level "DEBUG"
-    }
-}
-
-if ($null -ne $Path) {
-    $installedVersion = $Path.DisplayVersion | Select-Object -First 1
-    Write_LogEntry -Message "$($ProgramName) ist installiert. Installierte Version: $($installedVersion); Installationsdatei Version: $($localAutoItVersion)" -Level "INFO"
-    Write-Host "$ProgramName ist installiert." -ForegroundColor "Green"
-    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor "Cyan"
-    Write-Host "    Installationsdatei Version: $localAutoItVersion" -ForegroundColor "Cyan"
-
-    if ([version]$installedVersion -lt [version]$localAutoItVersion) {
-        Write_LogEntry -Message "Veraltete $($ProgramName) ist installiert. Update wird gestartet." -Level "INFO"
-        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor "Magenta"
-        $AutoItInstall = $true
-    } elseif ([version]$installedVersion -eq [version]$localAutoItVersion) {
-        Write_LogEntry -Message "Installierte Version ist aktuell." -Level "DEBUG"
-        Write-Host "        Installierte Version ist aktuell." -ForegroundColor "DarkGray"
-        $AutoItInstall = $false
-    } else {
-        Write_LogEntry -Message "Installierte Version ($($installedVersion)) ist neuer als lokale Version ($($localAutoItVersion)). Kein Install nötig." -Level "WARNING"
-        $AutoItInstall = $false
+    try {
+        $AutoItInstall = [version]$installedVersion -lt [version]$localAutoItVersion
+        if ($AutoItInstall) {
+            Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        } else {
+            Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-DeployLog -Message "Versionsvergleich fehlgeschlagen: $($_.Exception.Message)" -Level 'WARNING'
     }
 } else {
-    Write_LogEntry -Message "$($ProgramName) ist nicht in der Registry gefunden. Setze Install-Flag auf false." -Level "DEBUG"
-    $AutoItInstall = $false
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'DEBUG'
 }
+
 Write-Host ""
 
-$Path = Get-ChildItem 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -like 'Scite*' }
-Write_LogEntry -Message "Suche nach Scite Installation in Registry" -Level "DEBUG"
+# ── SciTE: installed version check ───────────────────────────────────────────
+$sciteInstallInfo = Get-RegistryVersion -DisplayNameLike "Scite*"
+$SciteInstall     = $false
 
-if ($null -ne $Path) {
-    $installedVersion = $Path.DisplayVersion | Select-Object -First 1
-    Write_LogEntry -Message "Scite ist installiert. Installierte Version: $($installedVersion); Installationsdatei Version: $($localSciTEVersion)" -Level "INFO"
-    Write-Host "Scite ist installiert." -ForegroundColor "Green"
-    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor "Cyan"
-    Write-Host "    Installationsdatei Version: $localSciTEVersion" -ForegroundColor "Cyan"
+if ($sciteInstallInfo) {
+    $installedVersion = $sciteInstallInfo.VersionRaw
+    Write-Host "Scite ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localSciTEVersion" -ForegroundColor Cyan
+    Write-DeployLog -Message "Scite installiert: $installedVersion | Lokal: $localSciTEVersion" -Level 'INFO'
 
-    if ([version]$installedVersion -lt [version]$localSciTEVersion) {
-        Write_LogEntry -Message "Veraltete Scite ist installiert. Update wird gestartet." -Level "INFO"
-        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor "Magenta"
-        $SciteInstall = $true
-    } elseif ([version]$installedVersion -eq [version]$localSciTEVersion) {
-        Write_LogEntry -Message "Installierte Scite Version ist aktuell." -Level "DEBUG"
-        Write-Host "        Installierte Version ist aktuell." -ForegroundColor "DarkGray"
-        $SciteInstall = $false
-    } else {
-        Write_LogEntry -Message "Installierte Scite Version ($($installedVersion)) ist neuer als lokale Version ($($localSciTEVersion)). Kein Install nötig." -Level "WARNING"
-        $SciteInstall = $false
+    try {
+        $SciteInstall = [version]$installedVersion -lt [version]$localSciTEVersion
+        if ($SciteInstall) {
+            Write-Host "        Veraltete Scite ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        } else {
+            Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-DeployLog -Message "Versionsvergleich fehlgeschlagen: $($_.Exception.Message)" -Level 'WARNING'
     }
 } else {
-    Write_LogEntry -Message "Scite nicht in Registry gefunden." -Level "DEBUG"
-    $SciteInstall = $false
+    Write-DeployLog -Message "Scite nicht in Registry gefunden." -Level 'DEBUG'
 }
+
 Write-Host ""
 
+# ── Install if needed ─────────────────────────────────────────────────────────
 if ($InstallationFlag) {
-    Write_LogEntry -Message "Starte externes Installationsskript mit -InstallationFlag. Aufruf: $($PSHostPath) -File $($Serverip)\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1 -InstallationFlag" -Level "INFO"
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1" -PassInstallationFlag
-    Write_LogEntry -Message "Externer Aufruf (InstallationFlag) beendet." -Level "DEBUG"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag
 }
 
-if ($AutoItInstall -eq $true) {
-    Write_LogEntry -Message "Starte externes Installationsskript für AutoIt. Aufruf: $($PSHostPath) -File $($Serverip)\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1 -Autoit" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1" `
-        -Autoit
-    Write_LogEntry -Message "Externer AutoIt-Aufruf beendet." -Level "DEBUG"
+if ($AutoItInstall) {
+    & $PSHostPath -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installScript -Autoit
+    Write-DeployLog -Message "AutoIt Installationsskript aufgerufen." -Level 'DEBUG'
 }
 
-if ($SciteInstall -eq $true) {
-    Write_LogEntry -Message "Starte externes Installationsskript für SciTE. Aufruf: $($PSHostPath) -File $($Serverip)\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1 -Scite" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\AutoitInstallation.ps1" `
-        -Scite
-    Write_LogEntry -Message "Externer SciTE-Aufruf beendet." -Level "DEBUG"
+if ($SciteInstall) {
+    & $PSHostPath -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installScript -Scite
+    Write-DeployLog -Message "SciTE Installationsskript aufgerufen." -Level 'DEBUG'
 }
+
 Write-Host ""
-
-Write_LogEntry -Message "Script endet normal." -Level "INFO"
-
+Write-DeployLog -Message "Script endet normal." -Level 'INFO'
 Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
