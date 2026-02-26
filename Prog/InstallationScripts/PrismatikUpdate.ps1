@@ -37,6 +37,7 @@ $githubInfo = Get-GitHubLatestRelease `
     -Repo        "psieg/Lightpack" `
     -Token       $GitHubToken `
     -AssetFilter { param($a) $a.name -match '\.exe$' -and ($a.name -match '64' -or $a.name -match 'unofficial') } `
+    -VersionRegex '(\d+\.\d+\.\d+\.\d+)' `
     -Context     $ProgramName
 
 $onlineVersion = if ($githubInfo) { $githubInfo.Version } else { $null }
@@ -50,8 +51,13 @@ Write-Host ""
 
 # ── Download if newer ─────────────────────────────────────────────────────────
 if ($onlineVersion -and $downloadUrl) {
+    # Normalize both to 4 parts for comparison (GitHub tag may only have 3 parts, local file 4)
     $isNewer = $false
-    try { $isNewer = [version]$onlineVersion -gt [version]$localVersion } catch { $isNewer = $onlineVersion -ne $localVersion }
+    try {
+        $ov4 = ($onlineVersion.Split('.') + @('0','0','0','0')) | Select-Object -First 4
+        $lv4 = ($localVersion.Split('.')  + @('0','0','0','0')) | Select-Object -First 4
+        $isNewer = [version]($ov4 -join '.') -gt [version]($lv4 -join '.')
+    } catch { $isNewer = $onlineVersion -ne $localVersion }
 
     if ($isNewer) {
         $destPath = Join-Path $InstallationFolder $assetName

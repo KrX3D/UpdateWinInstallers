@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
@@ -11,249 +11,133 @@ Import-Module $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
-
-# Import DeployToolkit for shared version/install helpers
-$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (-not (Test-Path $dtPath)) {
-    Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "ERROR"
-    exit 1
-}
-Import-Module -Name $dtPath -Force -ErrorAction Stop
-
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
 $InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
 
-# Function to parse the version number from the filename
-function ParseVersion {
-    param (
-        [string]$Filename
-    )
+$localFileFilter = "vlc-*-win64.exe"
+$installScript   = "$Serverip\Daten\Prog\InstallationScripts\Installation\VlcPlayerInstall.ps1"
 
-    $version = Get-VersionFromFileName -Name $Filename -Regex 'vlc-(\d+\.\d+\.\d+)-win64\.exe'
-    if ($version) {
-        Write_LogEntry -Message "Version aus Dateiname $($Filename) geparst: $version" -Level "DEBUG"
-        return $version.ToString()
-    }
+# ── Local version (from filename) ─────────────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localVersion = $null
 
-    Write_LogEntry -Message "Konnte Version nicht aus Dateiname $($Filename) parsen" -Level "DEBUG"
-    return $null
+if ($localFile) {
+    $m = [regex]::Match($localFile.Name, 'vlc-([\d.]+)-win64\.exe')
+    if ($m.Success) { $localVersion = $m.Groups[1].Value }
+    Write-DeployLog -Message "Lokale Datei: $($localFile.Name) | Version: $localVersion" -Level 'DEBUG'
+} else {
+    Write-DeployLog -Message "Keine lokale VLC-Installationsdatei gefunden." -Level 'INFO'
 }
 
-function Set-Tls12ForWebClient {
-    [CmdletBinding()]
-    param()
+# ── Online version ─────────────────────────────────────────────────────────────
+$onlineVersion = $null
+$downloadUrl   = $null
 
+try {
+    $html = (Invoke-WebRequest -Uri 'https://www.videolan.org/vlc/index.html' -UseBasicParsing -ErrorAction Stop).Content
+    $m2   = [regex]::Match($html, 'vlc-([\d.]+)-win64\.exe')
+    if ($m2.Success) {
+        $onlineVersion = $m2.Groups[1].Value
+        $downloadUrl   = "https://vlc.pixelx.de/vlc/$onlineVersion/win64/vlc-$onlineVersion-win64.exe"
+    }
+    Write-DeployLog -Message "Online-Version: $onlineVersion" -Level 'INFO'
+} catch {
+    Write-DeployLog -Message "Fehler beim Abrufen der VLC-Seite: $_" -Level 'ERROR'
+}
+
+Write-Host ""
+Write-Host "Lokale Version: $localVersion"  -ForegroundColor Cyan
+Write-Host "Online Version: $onlineVersion" -ForegroundColor Cyan
+Write-Host ""
+
+# ── Download if newer ─────────────────────────────────────────────────────────
+if ($onlineVersion -and $downloadUrl) {
+    $needDownload = $false
     try {
-        $tls12 = [Net.SecurityProtocolType]::Tls12
-        $securityProtocol = [Net.ServicePointManager]::SecurityProtocol
-        if (($securityProtocol -band $tls12) -eq 0) {
-            [Net.ServicePointManager]::SecurityProtocol = $securityProtocol -bor $tls12
+        $needDownload = (-not $localVersion) -or ([version]$onlineVersion -gt [version]$localVersion)
+    } catch { $needDownload = $onlineVersion -ne $localVersion }
+
+    if ($needDownload) {
+        $destPath = Join-Path $InstallationFolder "vlc-$onlineVersion-win64.exe"
+        $tempPath = "$destPath.part"
+
+        # Enable TLS 1.2
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+
+        $ok = Invoke-DownloadFile -Url $downloadUrl -OutFile $tempPath
+        if (-not $ok -or -not (Test-Path $tempPath)) {
+            # Retry via http mirror
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+            $httpUrl = "http://download.videolan.org/pub/videolan/vlc/$onlineVersion/win64/vlc-$onlineVersion-win64.exe"
+            Write-DeployLog -Message "Retry via HTTP: $httpUrl" -Level 'WARNING'
+            $ok = Invoke-DownloadFile -Url $httpUrl -OutFile $tempPath
         }
 
-        # Avoid 100-continue delays/timeouts in some environments.
-        [Net.ServicePointManager]::Expect100Continue = $false
-
-        # Some environments still require TLS 1.1 or legacy TLS enabled alongside TLS 1.2.
-        try {
-            $tls11 = [Net.SecurityProtocolType]::Tls11
-            if (([Net.ServicePointManager]::SecurityProtocol -band $tls11) -eq 0) {
-                [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $tls11
+        if ($ok -and (Test-Path $tempPath)) {
+            Move-Item -Path $tempPath -Destination $destPath -Force
+            if ($localFile -and (Test-Path $localFile.FullName) -and $localFile.FullName -ne $destPath) {
+                Remove-PathSafe -Path $localFile.FullName | Out-Null
             }
-        } catch { }
-
-        try {
-            $tls10 = [Net.SecurityProtocolType]::Tls
-            if (([Net.ServicePointManager]::SecurityProtocol -band $tls10) -eq 0) {
-                [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $tls10
-            }
-        } catch { }
-
-        Write_LogEntry -Message "TLS-Protokolle aktiv: $([Net.ServicePointManager]::SecurityProtocol)" -Level "DEBUG"
-    } catch {
-        Write_LogEntry -Message "Konnte TLS-Protokolle nicht aktivieren: $($_)" -Level "WARNING"
-    }
-}
-
-# Function to check if a newer version of VLC Player is available and initiate the download
-function CheckVLCVersion {
-    param (
-        [string]$InstalledVersion
-    )
-
-    $url = "https://www.videolan.org/vlc/index.html"
-    Write_LogEntry -Message "Rufe VLC-Webseite ab: $($url)" -Level "DEBUG"
-    $responseContent = Invoke-WebRequestCompat -Uri $url -ReturnContent
-    if (-not $responseContent) {
-        Write_LogEntry -Message "Konnte VLC-Webseite nicht abrufen: $url" -Level "ERROR"
-        return
-    }
-
-    # Extract the latest version of VLC Player from the HTML content
-    $versionPattern = 'vlc-(\d+\.\d+\.\d+)-win64\.exe'
-    $latestVersionObj = Get-OnlineVersionFromContent -Content $responseContent -Regex $versionPattern -SelectLast
-
-    if ($latestVersionObj) {
-        $latestVersion = $latestVersionObj.ToString()
-        Write_LogEntry -Message "Gefundene Online-Version auf Webseite: $($latestVersion)" -Level "INFO"
-    } else {
-        Write_LogEntry -Message "Konnte Online-Version auf $($url) nicht ermitteln" -Level "WARNING"
-        return
-    }
-    Write-Host ""
-    Write-Host "Lokale Version: $InstalledVersion" -foregroundcolor "Cyan"
-    Write-Host "Online Version: $latestVersion" -foregroundcolor "Cyan"
-    Write-Host ""
-
-    if ($latestVersion -gt $InstalledVersion) {
-        # Construct the download URL using the latest version
-        $downloadUrl = "https://vlc.pixelx.de/vlc/$latestVersion/win64/vlc-$latestVersion-win64.exe"
-        Write_LogEntry -Message "Update verfügbar: $($InstalledVersion) -> $($latestVersion). Download-URL: $($downloadUrl)" -Level "INFO"
-	
-        #Write-Host "Download URL: $downloadUrl"
-
-        $downloadPath = "$InstallationFolder\vlc-$latestVersion-win64.exe"
-        Write_LogEntry -Message "Starte Download nach: $($downloadPath)" -Level "INFO"
-
-        Set-Tls12ForWebClient
-
-        #Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
-        $webClient = New-Object System.Net.WebClient
-        try {
-            $webClient.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PowerShell WebClient"
-            $webClient.Proxy = [System.Net.WebRequest]::DefaultWebProxy
-            $webClient.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-            [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
-            Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "SUCCESS"
-        } catch {
-            Write_LogEntry -Message "Fehler beim Download $($downloadUrl): $($_)" -Level "ERROR"
-            Write_LogEntry -Message "Versuche HTTPS erneut ohne Proxy (direkte Verbindung)..." -Level "WARNING"
-            try {
-                $webClient.Proxy = $null
-                [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
-                Write_LogEntry -Message "Download ohne Proxy abgeschlossen: $($downloadPath)" -Level "SUCCESS"
-            } catch {
-                Write_LogEntry -Message "HTTPS ohne Proxy fehlgeschlagen $($downloadUrl): $($_)" -Level "ERROR"
-            }
-            Write_LogEntry -Message "Versuche HTTP-Mirror mit WebClient (falls HTTPS blockiert ist)..." -Level "WARNING"
-            $httpDownloadUrl = "http://download.videolan.org/pub/videolan/vlc/$latestVersion/win64/vlc-$latestVersion-win64.exe"
-            Write_LogEntry -Message "HTTP-URL: $($httpDownloadUrl)" -Level "DEBUG"
-            try {
-                $webClient.Proxy = $null
-                [void](Invoke-DownloadFile -Url $httpDownloadUrl -OutFile $downloadPath)
-                Write_LogEntry -Message "Download über HTTP abgeschlossen: $($downloadPath)" -Level "SUCCESS"
-            } catch {
-                Write_LogEntry -Message "HTTP-Download fehlgeschlagen $($httpDownloadUrl): $($_)" -Level "ERROR"
-            }
-        } finally {
-            $webClient.Dispose()
-        }
-
-        # Check if the file was completely downloaded
-        if (Test-Path $downloadPath) {
-            # Remove the old installer
-            try {
-                Remove-Item -Path $vlcPath -Force
-                Write_LogEntry -Message "Alte VLC-Installationsdatei entfernt: $($vlcPath)" -Level "DEBUG"
-            } catch {
-                Write_LogEntry -Message "Fehler beim Entfernen der alten Datei $($vlcPath): $($_)" -Level "WARNING"
-            }
-
-            Write-Host "$($ProgramName) wurde aktualisiert.." -foregroundcolor "green"
-            Write_LogEntry -Message "$($ProgramName) erfolgreich aktualisiert; neue Datei: $($downloadPath)" -Level "SUCCESS"
+            Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
+            Write-DeployLog -Message "$ProgramName aktualisiert: $destPath" -Level 'SUCCESS'
+            $localFile = Get-Item $destPath -ErrorAction SilentlyContinue
         } else {
-            Write-Host "Download ist fehlgeschlagen. $($ProgramName) wurde nicht aktuallisiert." -foregroundcolor "red"
-            Write_LogEntry -Message "Download fehlgeschlagen für $($downloadPath)" -Level "ERROR"
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+            Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+            Write-DeployLog -Message "Download fehlgeschlagen." -Level 'ERROR'
         }
-
     } else {
-        Write-Host "Kein Online Update verfügbar. $($ProgramName) is aktuell." -foregroundcolor "DarkGray"
-        Write_LogEntry -Message "Kein Update verfügbar (Local: $($InstalledVersion), Online: $($latestVersion))" -Level "INFO"
+        Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
     }
-}
-
-# Get the latest VLC Player installer file in the directory
-$latestInstaller = Get-InstallerFilePath -Directory $InstallationFolder -Filter "vlc-*-win64.exe"
-
-if ($latestInstaller) {
-    Write_LogEntry -Message "Gefundene lokale Installer-Datei: $($latestInstaller.FullName)" -Level "DEBUG"
-    $vlcPath = $latestInstaller.FullName
-
-    # Get the version from the filename
-    $installedVersion = ParseVersion -Filename $vlcPath
-
-    if ($installedVersion) {
-        Write_LogEntry -Message "Aufruf CheckVLCVersion mit InstalledVersion: $($installedVersion)" -Level "INFO"
-        CheckVLCVersion -InstalledVersion $installedVersion
-        Write_LogEntry -Message "Rückkehr aus CheckVLCVersion für Version: $($installedVersion)" -Level "DEBUG"
-    } else {
-        Write_LogEntry -Message "Konnte Version aus vorhandener Datei $($vlcPath) nicht parsen" -Level "WARNING"
-        #Write-Host "Unable to parse version from the filename: $vlcPath"
-    }
-} else {
-    Write_LogEntry -Message "Kein lokaler VLC-Installer im Ordner $($InstallationFolder) gefunden" -Level "INFO"
-    #Write-Host "VLC Player installer not found in the directory: $InstallationFolder"
+} elseif (-not $onlineVersion) {
+    Write-DeployLog -Message "Online-Version konnte nicht ermittelt werden." -Level 'WARNING'
 }
 
 Write-Host ""
 
-#Check Installed Version / Install if neded
-$FoundFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter "vlc-*-win64.exe"
-if ($FoundFile) {
-    Write_LogEntry -Message "Gefundene Installationsdatei für nachfolgende Prüfungen: $($FoundFile.FullName)" -Level "DEBUG"
-    $InstallationFileName = $FoundFile.Name
-    $localVersion = ParseVersion -Filename $InstallationFileName
-} else {
-    Write_LogEntry -Message "Keine Installationsdatei für spätere Prüfungen gefunden" -Level "DEBUG"
-    $InstallationFileName = $null
-    $localVersion = $null
+# ── Re-evaluate local file ─────────────────────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localVersion = $null
+if ($localFile) {
+    $m = [regex]::Match($localFile.Name, 'vlc-([\d.]+)-win64\.exe')
+    if ($m.Success) { $localVersion = $m.Groups[1].Value }
 }
 
-#$Path  = Get-ChildItem 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -like $ProgramName + '*' }
+# ── Installed vs. local ────────────────────────────────────────────────────────
+$installedInfo    = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
+$installedVersion = if ($installedInfo) { $installedInfo.VersionRaw } else { $null }
+$Install          = $false
 
-$installedInfo = Get-InstalledVersionInfo -DisplayNameLike "$($ProgramName)*"
+if ($installedVersion) {
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localVersion"     -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $installedVersion | Lokal: $localVersion" -Level 'INFO'
 
-if ($null -ne $installedInfo) {
-    $installedVersion = $installedInfo.VersionRaw
-    Write-Host "$($ProgramName) ist installiert." -foregroundcolor "green"
-    Write-Host "	Installierte Version:       $installedVersion" -foregroundcolor "Cyan"
-    Write-Host "	Installationsdatei Version: $localVersion" -foregroundcolor "Cyan"
-    Write_LogEntry -Message "$($ProgramName) in Registry gefunden; InstalledVersion=$($installedVersion); LocalFileVersion=$($localVersion)" -Level "INFO"
-
-    if (Test-InstallerUpdateRequired -InstalledVersion (ConvertTo-VersionSafe $installedVersion) -InstallerVersion (ConvertTo-VersionSafe $localVersion)) {
-        Write-Host "		Veraltete $($ProgramName) ist installiert. Update wird gestartet." -foregroundcolor "magenta"
-        $Install = $true
-        Write_LogEntry -Message "Install = $($Install) (Update erforderlich)" -Level "INFO"
-    } elseif ([version]$installedVersion -eq [version]$localVersion) {
-        Write-Host "		Installierte Version ist aktuell." -foregroundcolor "DarkGray"
-        $Install = $false
-        Write_LogEntry -Message "Install = $($Install) (Version aktuell)" -Level "DEBUG"
+    try { $Install = [version]$installedVersion -lt [version]$localVersion } catch { $Install = $false }
+    if ($Install) {
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
     } else {
-        #Write-Host "$ProgramName is installed, and the installed version ($installedVersion) is higher than the local version ($localVersion)."
-        $Install = $false
-        Write_LogEntry -Message "Install = $($Install) (installierte Version höher)" -Level "WARNING"
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
     }
 } else {
-    #Write-Host "$ProgramName is not installed on this system."
-    $Install = $false
-    Write_LogEntry -Message "$($ProgramName) nicht in Registry gefunden; Install = $($Install)" -Level "INFO"
+    Write-Host "$ProgramName ist nicht installiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'INFO'
 }
+
 Write-Host ""
 
-#Install if needed
+# ── Install if needed ──────────────────────────────────────────────────────────
 if ($InstallationFlag) {
-    Write_LogEntry -Message "Starte externes Installationsscript (InstallationFlag) via $($PSHostPath)" -Level "INFO"
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\VlcPlayerInstall.ps1" -PassInstallationFlag
-    Write_LogEntry -Message "Rückkehr von VlcPlayerInstall.ps1 nach InstallationFlag-Aufruf" -Level "DEBUG"
-} elseif ($Install -eq $true) {
-    Write_LogEntry -Message "Starte externes Installationsscript (Install) via $($PSHostPath)" -Level "INFO"
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\VlcPlayerInstall.ps1"
-    Write_LogEntry -Message "Rückkehr von VlcPlayerInstall.ps1 nach Install-Aufruf" -Level "DEBUG"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
+} elseif ($Install) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
 }
-Write-Host ""
-Write_LogEntry -Message "Script-Ende erreicht." -Level "INFO"
 
+Write-Host ""
 Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
