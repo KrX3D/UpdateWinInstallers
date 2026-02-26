@@ -42,17 +42,30 @@ if ($localFile) {
 }
 
 # ── Online version ────────────────────────────────────────────────────────────
-# Adobe rdc.adobe.io now requires an API key. Scrape the public release notes page instead.
+# rdc.adobe.io requires the x-api-key header — the key "dc-get-adobereader-cdn"
+# is the public key Adobe's own get.adobe.com download page sends with each request.
 $onlineVersionRaw = $null
 try {
-    $html = (Invoke-WebRequest -Uri 'https://helpx.adobe.com/acrobat/release-note/release-notes-acrobat-reader.html' -UseBasicParsing -ErrorAction Stop).Content
-    # Version appears as e.g. "25.001.21223" in the page content
-    $m = [regex]::Match($html, '\b(\d{2}\.\d{3}\.\d{5})\b')
-    if ($m.Success) {
-        $onlineVersionRaw = $m.Groups[1].Value
+    $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    $session.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+
+    $result = Invoke-RestMethod `
+        -Uri 'https://rdc.adobe.io/reader/products?lang=mui&site=enterprise&os=Windows%2011&country=DE&nativeOs=Windows%2010&api_key=dc-get-adobereader-cdn' `
+        -WebSession $session `
+        -Headers @{
+            'Accept'          = '*/*'
+            'Accept-Language' = 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
+            'Origin'          = 'https://get.adobe.com'
+            'Referer'         = 'https://get.adobe.com/'
+            'x-api-key'       = 'dc-get-adobereader-cdn'
+        } `
+        -ErrorAction Stop
+
+    $onlineVersionRaw = $result.products.reader[0].version
+    if ($onlineVersionRaw) {
         Write-DeployLog -Message "Online-Version gefunden: $onlineVersionRaw" -Level 'INFO'
     } else {
-        Write-DeployLog -Message "Kein passendes Versionsmuster auf der Seite gefunden." -Level 'WARNING'
+        Write-DeployLog -Message "Version-Feld leer in API-Antwort." -Level 'WARNING'
     }
 } catch {
     Write-DeployLog -Message "Fehler beim Abrufen der Online-Version: $_" -Level 'ERROR'

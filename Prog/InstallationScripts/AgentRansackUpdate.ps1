@@ -47,21 +47,17 @@ $downloadUrl   = $null
 try {
     $html = (Invoke-WebRequest -Uri $onlineVersionUrl -UseBasicParsing -ErrorAction Stop).Content
 
-    # Extract the tokenized exe download link
+    # Link is protocol-relative: //download.mythicsoft.com/flp/{build}/{token}/agentransack_{build}.exe
     $linkMatch = [regex]::Match($html,
-        'href="(https://download\.mythicsoft\.com/flp/(\d+)/[^"]+\.exe)"')
+        'href="((?:https?:)?//download\.mythicsoft\.com/flp/(\d+)/[^"]+/agentransack_\d+\.exe)"')
     if ($linkMatch.Success) {
-        $downloadUrl   = $linkMatch.Groups[1].Value
+        $rawHref       = $linkMatch.Groups[1].Value
         $onlineVersion = $linkMatch.Groups[2].Value
+        # Ensure we have an absolute URL
+        $downloadUrl = if ($rawHref -match '^//') { "https:$rawHref" } else { $rawHref }
         Write-DeployLog -Message "Online-Version: $onlineVersion | URL: $downloadUrl" -Level 'INFO'
     } else {
-        # Fallback: extract build number from any agentransack reference
-        $verMatch = [regex]::Match($html, 'agentransack[_-](\d{4,})')
-        if ($verMatch.Success) {
-            $onlineVersion = $verMatch.Groups[1].Value
-            $downloadUrl   = "https://download.mythicsoft.com/flp/$onlineVersion/agentransack_$onlineVersion.exe"
-            Write-DeployLog -Message "Fallback-URL konstruiert: $downloadUrl" -Level 'WARNING'
-        }
+        Write-DeployLog -Message "Kein tokenisierter Download-Link auf der Seite gefunden." -Level 'WARNING'
     }
 } catch {
     Write-DeployLog -Message "Fehler beim Abrufen der Webseite: $_" -Level 'ERROR'
