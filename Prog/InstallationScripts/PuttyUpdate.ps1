@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
@@ -11,329 +11,183 @@ Import-Module $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
-
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
 $InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
 
-$puttyPath = "$InstallationFolder\putty.exe"
-$destinationPath = [Environment]::GetFolderPath("Desktop")
-Write_LogEntry -Message "Putty Pfad: $($puttyPath); Desktop Zielpfad: $($destinationPath)" -Level "DEBUG"
+# Source file (network share) and install destination
+$sourcePath         = Join-Path $InstallationFolder "putty.exe"
+$installDir         = "C:\Program Files (x86)\PuTTY"
+$installPath        = Join-Path $installDir "putty.exe"
+$desktopShortcut    = Join-Path ([Environment]::GetFolderPath("Desktop")) "PuTTY.lnk"
 
-$installDir = "C:\Program Files (x86)\PuTTY"
-$puttyInstallPath = Join-Path -Path $installDir -ChildPath "putty.exe"
-$desktopShortcutPath = Join-Path -Path $destinationPath -ChildPath "PuTTY.lnk"
-
-# Function to parse the version number from the release string
-function ParseVersion {
-    param (
-        [string]$VersionString
-    )
-
-    $versionPattern = '(\d+\.\d+)'
-    $match = [regex]::Match($VersionString, $versionPattern)
-    
-    if ($match.Success) {
-        return $match.Groups[1].Value
-    }
-    
-    return $null
-}
-
-# Function to check if a newer version is available
-function CheckPuTTYVersion {
-    param (
-        [string]$InstalledVersion
-    )
-
-    $url = "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html"
-    Write_LogEntry -Message "Prüfe Online-Version für PuTTY unter: $($url)" -Level "DEBUG"
-    try {
-        $response = Invoke-WebRequest -Uri $url -UseBasicParsing
-        Write_LogEntry -Message "Online-Seite abgerufen: $($url)" -Level "DEBUG"
-    } catch {
-        Write_LogEntry -Message "Fehler beim Abrufen der PuTTY-Seite $($url): $($_)" -Level "ERROR"
-        return
-    }
-
-	$versionPattern = 'latest release \((.*?)\)'
-	try {
-		$latestVersion = [regex]::Match($response.Content, $versionPattern).Groups[1].Value
-		Write_LogEntry -Message "Gefundene Online-Version: $($latestVersion)" -Level "DEBUG"
-	} catch {
-		Write_LogEntry -Message "Fehler beim Parsen der Online-Version aus der Webseite: $($_)" -Level "ERROR"
-		return
-	}
-
-	Write-Host ""
-	Write-Host "Lokale Version: $InstalledVersion" -foregroundcolor "Cyan"
-	Write-Host "Online Version: $latestVersion" -foregroundcolor "Cyan"
-	Write-Host ""
-	Write_LogEntry -Message "Lokale Version: $($InstalledVersion); Online Version: $($latestVersion)" -Level "INFO"
-	
-    if ($latestVersion -gt $InstalledVersion) {
-		$downloadLinkPattern = '<span class="downloadname">64-bit x86:</span>\s*<span class="downloadfile"><a href="(.*?putty\.exe)">'
-		$downloadLink = [regex]::Match($response.Content, $downloadLinkPattern).Groups[1].Value
-		Write_LogEntry -Message "Downloadlink extrahiert: $($downloadLink)" -Level "DEBUG"
-		
-        $downloadPath = (Join-Path -Path $env:TEMP -ChildPath "putty.exe")
-        Write_LogEntry -Message "Temporärer Downloadpfad: $($downloadPath)" -Level "DEBUG"
-        $webClient = New-Object System.Net.WebClient
-        try {
-            [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
-            Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "DEBUG"
-        } catch {
-            Write_LogEntry -Message "Fehler beim Herunterladen von $($downloadLink): $($_)" -Level "ERROR"
-        } finally {
-            $webClient.Dispose()
-        }
-	 
-		# Check if the file was completely downloaded
-		if (Test-Path $downloadPath) {
-			try {
-				if (Test-Path $puttyPath) {
-					Remove-Item -Path $puttyPath -Force
-					Write_LogEntry -Message "Alte putty.exe auf Quelle entfernt: $($puttyPath)" -Level "DEBUG"
-				}
-			} catch {
-				Write_LogEntry -Message "Fehler beim Entfernen der alten putty.exe auf Quelle $($puttyPath): $($_)" -Level "WARNING"
-			}
-			
-			try {
-				Move-Item -Path $downloadPath -Destination $puttyPath -Force
-				Write_LogEntry -Message "Neue putty.exe verschoben nach Quelle: $($puttyPath)" -Level "SUCCESS"
-			} catch {
-				Write_LogEntry -Message "Fehler beim Verschieben der neuen putty.exe nach Quelle $($puttyPath): $($_)" -Level "ERROR"
-			}
-
-			Write-Host "$ProgramName wurde aktualisiert.." -foregroundcolor "green"
-		} else {
-			Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktuallisiert." -foregroundcolor "red"
-            Write_LogEntry -Message "Download fehlgeschlagen; temporäre Datei nicht gefunden: $($downloadPath)" -Level "ERROR"
-		}		
-    } else {
-		Write-Host "Kein Online Update verfügbar. $ProgramName is aktuell." -foregroundcolor "DarkGray"
-        Write_LogEntry -Message "Kein Online Update verfügbar für $($ProgramName). Online: $($latestVersion); Lokal: $($InstalledVersion)" -Level "INFO"
-    }
-}
-
-# Check PuTTY version
-try {
-    if (Test-Path $puttyInstallPath) {
-        $puttyVersionInfo = Get-Item $puttyInstallPath | Select-Object -ExpandProperty VersionInfo
-        Write_LogEntry -Message "VersionInfo für lokale putty.exe ermittelt: $($puttyInstallPath)" -Level "DEBUG"
-        $installedVersionString = $puttyVersionInfo.ProductVersion
-        $installedVersion = ParseVersion -VersionString $installedVersionString
-        Write_LogEntry -Message "Installierte VersionString: $($installedVersionString); Parsed: $($installedVersion)" -Level "DEBUG"
-    } else {
-        Write_LogEntry -Message "putty.exe nicht gefunden oder VersionInfo nicht ermittelbar: $($puttyInstallPath)" -Level "WARNING"
-        $installedVersion = $null
-    }
-} catch {
-    Write_LogEntry -Message "putty.exe nicht gefunden oder VersionInfo nicht ermittelbar: $($puttyInstallPath); Fehler: $($_)" -Level "WARNING"
-    $installedVersion = $null
-}
-
-if ($installedVersion) {
-    CheckPuTTYVersion -InstalledVersion $installedVersion
+# ── Local (source) version ─────────────────────────────────────────────────────
+$localVersion = $null
+if (Test-Path $sourcePath) {
+    $vi           = (Get-Item $sourcePath).VersionInfo
+    $localVersion = "$($vi.ProductMajorPart).$($vi.ProductMinorPart)"
+    Write-DeployLog -Message "Lokale Datei: putty.exe | Version: $localVersion" -Level 'DEBUG'
 } else {
-    Write_LogEntry -Message "Putty nicht installiert oder Version unbekannt; überspringe Online-Check." -Level "DEBUG"
-    #Write-Host "PuTTY is not installed on this system."
+    Write-DeployLog -Message "Keine lokale putty.exe auf dem Share gefunden: $sourcePath" -Level 'WARNING'
+}
+
+# ── Online version ─────────────────────────────────────────────────────────────
+$onlineVersion = $null
+$downloadUrl   = $null
+
+try {
+    $html = (Invoke-WebRequest -Uri 'https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html' -UseBasicParsing -ErrorAction Stop).Content
+
+    $vm = [regex]::Match($html, 'latest release \(([\d.]+)\)')
+    if ($vm.Success) { $onlineVersion = $vm.Groups[1].Value }
+
+    $lm = [regex]::Match($html, '<span class="downloadname">64-bit x86:</span>\s*<span class="downloadfile"><a href="(.*?putty\.exe)">')
+    if ($lm.Success) { $downloadUrl = $lm.Groups[1].Value }
+
+    Write-DeployLog -Message "Online-Version: $onlineVersion | URL: $downloadUrl" -Level 'INFO'
+} catch {
+    Write-DeployLog -Message "Fehler beim Abrufen der PuTTY-Seite: $_" -Level 'ERROR'
 }
 
 Write-Host ""
-
-#Check Installed Version / Install if neded
-try {
-    $FoundFile = Get-ChildItem $puttyPath
-    Write_LogEntry -Message "Gefundene lokale Putty Datei: $($FoundFile.FullName)" -Level "DEBUG"
-    $versionInfo = (Get-Item $FoundFile).VersionInfo
-    $localVersion = $versionInfo.ProductMajorPart.ToString() + "." + $versionInfo.ProductMinorPart.ToString() + "." + $versionInfo.ProductBuildPart.ToString() + "." + $versionInfo.ProductPrivatePart.ToString()
-    Write_LogEntry -Message "Lokale Installationsdatei Version: $($localVersion)" -Level "DEBUG"
-} catch {
-    Write_LogEntry -Message "Fehler beim Ermitteln der lokalen Putty-Datei/Version: $($_)" -Level "WARNING"
-    $localVersion = $null
-}
-
-$destinationFilePath = Join-Path $env:USERPROFILE "Desktop\putty.exe"
-if (Test-Path $destinationFilePath) {
-	try {
-		$FoundFile = Get-ChildItem $destinationFilePath
-		$versionInfo = (Get-Item $FoundFile).VersionInfo
-		$installedVersion = $versionInfo.ProductMajorPart.ToString() + "." + $versionInfo.ProductMinorPart.ToString() + "." + $versionInfo.ProductBuildPart.ToString() + "." + $versionInfo.ProductPrivatePart.ToString()
-		Write_LogEntry -Message "Gefundene Putty auf Desktop: $($destinationFilePath); Version: $($installedVersion)" -Level "DEBUG"
-	} catch {
-		Write_LogEntry -Message "Fehler beim Ermitteln der Desktop-Putty-Version: $($_)" -Level "WARNING"
-		$installedVersion = $null
-	}
-} else {
-    Write_LogEntry -Message "Putty nicht auf Desktop gefunden: $($destinationFilePath)" -Level "DEBUG"
-}
-
-function Normalize-VersionString {
-    param([string]$vs)
-    if (-not $vs) { return [version]"0.0.0.0" }
-
-    # Extrahiere nur Ziffern-Teile und wandle in ints um (sichere Handhabung, falls zusätzliche Texte vorhanden sind)
-    $parts = ($vs -split '\.') | ForEach-Object {
-        if ($_ -match '\d+') { [int]($Matches[0]) } else { 0 }
-    }
-
-    while ($parts.Count -lt 4) { $parts += 0 }   # auf 4 Teile auffüllen
-    # Wenn es mehr als 4 Teile gäbe, werden nur die ersten 4 verwendet
-    return [version]::new($parts[0], $parts[1], $parts[2], $parts[3])
-}
-
-if ($null -ne $installedVersion) {
-    # Normalisiere beide Versionen auf Version-Objekte mit 4 Teilen
-    $instVerObj  = Normalize-VersionString $installedVersion
-    $localVerObj = Normalize-VersionString $localVersion
-
-    Write-Host "$ProgramName ist installiert." -foregroundcolor "green"
-    Write-Host "	Installierte Version:       $($instVerObj.ToString())" -foregroundcolor "Cyan"
-    Write-Host "	Installationsdatei Version: $($localVerObj.ToString())" -foregroundcolor "Cyan"
-    Write_LogEntry -Message "$($ProgramName) ist installiert; Installierte Version: $($instVerObj.ToString()); Installationsdatei Version: $($localVerObj.ToString())" -Level "INFO"
-    
-    if ($instVerObj -lt $localVerObj) {
-        Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -foregroundcolor "magenta"
-        $Install = $true
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (Update erforderlich)" -Level "INFO"
-    } elseif ($instVerObj -eq $localVerObj) {
-        Write-Host "		Installierte Version ist aktuell." -foregroundcolor "DarkGray"
-        $Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (Version aktuell)" -Level "DEBUG"
-    } else {
-        #Write-Host "$ProgramName is installed, and the installed version ($installedVersion) is higher than the local version ($localVersion)."
-        $Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (installierte Version neuer)" -Level "WARNING"
-    }
-} else {
-    #Write-Host "$ProgramName is not installed on this system."
-    $Install = $false
-    Write_LogEntry -Message "$($ProgramName) nicht installiert (keine Version in Zielpfad gefunden)." -Level "INFO"
-}
+Write-Host "Lokale Version: $localVersion"  -ForegroundColor Cyan
+Write-Host "Online Version: $onlineVersion" -ForegroundColor Cyan
 Write-Host ""
-Write_LogEntry -Message "Install-Flag/Entscheidung: InstallationFlag=$($InstallationFlag); Install=$($Install)" -Level "DEBUG"
 
-#Install if needed
-if($Install -eq $true -or $InstallationFlag)
-{
-	Write-Host "Putty wird kopiert"
-    Write_LogEntry -Message "Starte Kopiervorgang Putty auf Ziel: $($puttyInstallPath) (Quelle: $($puttyPath))" -Level "INFO"
+# ── Download if newer (updates the source file on the share) ──────────────────
+if ($onlineVersion -and $downloadUrl -and $localVersion) {
+    $isNewer = $false
+    try { $isNewer = [version]$onlineVersion -gt [version]$localVersion } catch { $isNewer = $onlineVersion -ne $localVersion }
 
-	if (-not (Test-Path -Path $installDir)) {
-		try {
-			New-Item -Path $installDir -ItemType Directory -Force | Out-Null
-            Write_LogEntry -Message "Installationsverzeichnis erstellt: $($installDir)" -Level "INFO"
-		} catch {
-			Write_LogEntry -Message "Fehler beim Erstellen des Installationsverzeichnisses $($installDir): $($_)" -Level "ERROR"
-		}
-	}
-
-	if (Test-Path $puttyPath) {
-		try {
-			Copy-Item -Path $puttyPath -Destination $puttyInstallPath -Force
-			Write_LogEntry -Message "Putty kopiert nach: $($puttyInstallPath)" -Level "SUCCESS"
-		} catch {
-			Write_LogEntry -Message "Fehler beim Kopieren von $($puttyPath) nach $($puttyInstallPath): $($_)" -Level "ERROR"
-		}
-	} else {
-		Write_LogEntry -Message "Quelle Putty nicht gefunden: $($puttyPath)" -Level "ERROR"
-	}
-	
-	# Create Desktop shortcut only when copying/installing
-	try {
-		$shell = New-Object -ComObject WScript.Shell
-		$shortcut = $shell.CreateShortcut($desktopShortcutPath)
-		$shortcut.TargetPath = $puttyInstallPath
-		$shortcut.WorkingDirectory = $installDir
-		if (Test-Path $puttyInstallPath) {
-			$shortcut.IconLocation = $puttyInstallPath
-		}
-		$shortcut.Save()
-		Write_LogEntry -Message "Desktop-Verknüpfung erstellt: $($desktopShortcutPath)" -Level "SUCCESS"
-	} catch {
-		Write_LogEntry -Message "Fehler beim Erstellen der Desktop-Verknüpfung $($desktopShortcutPath): $($_)" -Level "ERROR"
-	}
-
-	Write-Host "Putty wird kofiguriert"
-	Write_LogEntry -Message "Beginne Konfiguration von Putty (SSH Host Keys & Registry-Einstellungen)" -Level "INFO"
-	Write-Host "	SSH Host Keys werden gesetzt"
-		#PC Name wird gesucht
-		$scriptPath = "$Serverip\Daten\Prog\InstallationScripts\GetPcByUUID.ps1"
-		Write_LogEntry -Message "Rufe PC-Name Script auf: $($scriptPath)" -Level "DEBUG"
-
-		try {
-			#$PCName = & $scriptPath
-			#$PCName = & "powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Verbose:$false
-			$PCName = & $PSHostPath `
-				-NoLogo -NoProfile -ExecutionPolicy Bypass `
-				-File $scriptPath `
-				-Verbose:$false
-            Write_LogEntry -Message "PC-Name ermittelt: $($PCName) vom Script: $($scriptPath)" -Level "DEBUG"
-		} catch {
-			Write-Host "Failed to load script $scriptPath. Reason: $($_.Exception.Message)" -ForegroundColor Red
-            Write_LogEntry -Message "Fehler beim Aufruf des Scripts $($scriptPath): $($($_.Exception.Message))" -Level "ERROR"
-			Exit
-		}
-		
-		# Define the backup file path
-		$backupFilePath = "$Serverip\Daten\Windows_Backup\$PCName\PuTTY_SSHHostKeys_Backup.reg"
-		Write_LogEntry -Message "Erwarteter Backup-Pfad für SSH Host Keys: $($backupFilePath)" -Level "DEBUG"
-
-		# Check if the backup file exists
-		if (Test-Path $backupFilePath) {
+    if ($isNewer) {
+        $tempPath = Join-Path $env:TEMP "putty.exe"
+        $ok = Invoke-DownloadFile -Url $downloadUrl -OutFile $tempPath
+        if ($ok -and (Test-Path $tempPath)) {
             try {
-			    # Import the SSH host keys from the .reg file
-			    reg import $backupFilePath
-			    Write-Host "Registry file $backupFilePath imported successfully."
-                Write_LogEntry -Message "Registry Datei importiert: $($backupFilePath)" -Level "SUCCESS"
+                if (Test-Path $sourcePath) { Remove-Item -Path $sourcePath -Force }
+                Move-Item -Path $tempPath -Destination $sourcePath -Force
+                Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
+                Write-DeployLog -Message "$ProgramName aktualisiert: $sourcePath" -Level 'SUCCESS'
+
+                # Re-read local version
+                $vi           = (Get-Item $sourcePath).VersionInfo
+                $localVersion = "$($vi.ProductMajorPart).$($vi.ProductMinorPart)"
             } catch {
-                Write_LogEntry -Message "Fehler beim Import der Registry-Datei $($backupFilePath): $($_)" -Level "ERROR"
+                Write-DeployLog -Message "Fehler beim Ersetzen der Quelldatei: $_" -Level 'ERROR'
+                Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+                Write-Host "Fehler beim Aktualisieren. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
             }
-		} else {
-			Write-Host "Registry file not found: $backupFilePath"
-            Write_LogEntry -Message "Registry Backup Datei nicht gefunden: $($backupFilePath)" -Level "WARNING"
-		}
-	
-	Write-Host "	SSH Host Keys werden gesetzt"
-	Write_LogEntry -Message "Setze PuTTY Default Settings in Registry: HKCU:\Software\SimonTatham\PuTTY\Sessions\Default%20Settings" -Level "DEBUG"
-		# Define the path to the PuTTY default settings in the registry
-		$puttyDefaultSettingsPath = "HKCU:\Software\SimonTatham\PuTTY\Sessions\Default%20Settings"
-
-		# Define the font name you want to set
-		$fontName = "Terminal"
-
-		# Define the FontCharSet value you want to set (DWORD value in hexadecimal)
-		$fontCharSet = 0x000000FF
-
-		# Check if the registry path exists
-		if (-not (Test-Path -Path $puttyDefaultSettingsPath)) {
-			# Create the registry key if it does not exist
-			New-Item -Path "HKCU:\Software\SimonTatham\PuTTY\Sessions" -Name "Default%20Settings" -Force
-            Write_LogEntry -Message "Registry-Pfad erstellt: $($puttyDefaultSettingsPath)" -Level "DEBUG"
-		}
-
-		# Set the font in the registry
-		try {
-			Set-ItemProperty -Path $puttyDefaultSettingsPath -Name "Font" -Value $fontName
-			Write_LogEntry -Message "Registry-Eintrag gesetzt: Font = $($fontName) in $($puttyDefaultSettingsPath)" -Level "DEBUG"
-		} catch {
-			Write_LogEntry -Message "Fehler beim Setzen des Registry-Eintrags Font in $($puttyDefaultSettingsPath): $($_)" -Level "ERROR"
-		}
-
-		# Set the FontCharSet in the registry
-		try {
-			Set-ItemProperty -Path $puttyDefaultSettingsPath -Name "FontCharSet" -Value $fontCharSet -Type DWord
-			Write_LogEntry -Message "Registry-Eintrag gesetzt: FontCharSet = $($fontCharSet) in $($puttyDefaultSettingsPath)" -Level "DEBUG"
-		} catch {
-			Write_LogEntry -Message "Fehler beim Setzen des Registry-Eintrags FontCharSet in $($puttyDefaultSettingsPath): $($_)" -Level "ERROR"
-		}
+        } else {
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+            Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+            Write-DeployLog -Message "Download fehlgeschlagen." -Level 'ERROR'
+        }
+    } else {
+        Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
+    }
+} elseif (-not $onlineVersion) {
+    Write-DeployLog -Message "Online-Version konnte nicht ermittelt werden." -Level 'WARNING'
 }
-Write-Host ""
-Write_LogEntry -Message "Script-Ende erreicht." -Level "INFO"
 
+Write-Host ""
+
+# ── Installed (C:\Program Files\PuTTY) vs. source ─────────────────────────────
+$installedVersion = $null
+if (Test-Path $installPath) {
+    $vi2              = (Get-Item $installPath).VersionInfo
+    $installedVersion = "$($vi2.ProductMajorPart).$($vi2.ProductMinorPart).$($vi2.ProductBuildPart).$($vi2.ProductPrivatePart)"
+}
+
+$Install = $false
+if ($installedVersion) {
+    # Normalize source version to 4-part for fair comparison
+    $vi3     = (Get-Item $sourcePath -ErrorAction SilentlyContinue)?.VersionInfo
+    $srcVer4 = if ($vi3) { "$($vi3.ProductMajorPart).$($vi3.ProductMinorPart).$($vi3.ProductBuildPart).$($vi3.ProductPrivatePart)" } else { "0.0.0.0" }
+
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $srcVer4"          -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $installedVersion | Lokal: $srcVer4" -Level 'INFO'
+
+    try { $Install = [version]$installedVersion -lt [version]$srcVer4 } catch { $Install = $false }
+    if ($Install) {
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
+    } else {
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
+    }
+} else {
+    Write-Host "$ProgramName ist nicht installiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "$ProgramName nicht in Installationspfad gefunden." -Level 'INFO'
+}
+
+Write-Host ""
+
+# ── Copy / install if needed ───────────────────────────────────────────────────
+if ($Install -or $InstallationFlag) {
+    Write-Host "Putty wird kopiert" -ForegroundColor Cyan
+    Write-DeployLog -Message "Starte Kopiervorgang: $sourcePath -> $installPath" -Level 'INFO'
+
+    if (-not (Test-Path $installDir)) {
+        New-Item -Path $installDir -ItemType Directory -Force | Out-Null
+        Write-DeployLog -Message "Installationsverzeichnis erstellt: $installDir" -Level 'INFO'
+    }
+
+    if (Test-Path $sourcePath) {
+        Copy-Item -Path $sourcePath -Destination $installPath -Force
+        Write-DeployLog -Message "Kopiert: $installPath" -Level 'SUCCESS'
+    } else {
+        Write-DeployLog -Message "Quelldatei nicht gefunden: $sourcePath" -Level 'ERROR'
+    }
+
+    # ── Desktop shortcut ──────────────────────────────────────────────────────
+    try {
+        $shell    = New-Object -ComObject WScript.Shell
+        $lnk      = $shell.CreateShortcut($desktopShortcut)
+        $lnk.TargetPath       = $installPath
+        $lnk.WorkingDirectory = $installDir
+        if (Test-Path $installPath) { $lnk.IconLocation = $installPath }
+        $lnk.Save()
+        Write-DeployLog -Message "Desktop-Verknüpfung erstellt: $desktopShortcut" -Level 'SUCCESS'
+    } catch {
+        Write-DeployLog -Message "Fehler beim Erstellen der Verknüpfung: $_" -Level 'ERROR'
+    }
+
+    # ── SSH Host Keys ──────────────────────────────────────────────────────────
+    Write-Host "    SSH Host Keys werden gesetzt" -ForegroundColor Cyan
+    $scriptPath = "$Serverip\Daten\Prog\InstallationScripts\GetPcByUUID.ps1"
+    try {
+        $PCName = & $PSHostPath -NoLogo -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Verbose:$false
+        Write-DeployLog -Message "PC-Name ermittelt: $PCName" -Level 'DEBUG'
+
+        $backupFile = "$Serverip\Daten\Windows_Backup\$PCName\PuTTY_SSHHostKeys_Backup.reg"
+        if (Test-Path $backupFile) {
+            reg import $backupFile
+            Write-DeployLog -Message "SSH Host Keys importiert: $backupFile" -Level 'SUCCESS'
+        } else {
+            Write-DeployLog -Message "SSH Host Key Backup nicht gefunden: $backupFile" -Level 'WARNING'
+        }
+    } catch {
+        Write-DeployLog -Message "Fehler beim Abrufen des PC-Namens: $_" -Level 'ERROR'
+    }
+
+    # ── PuTTY Default Settings ─────────────────────────────────────────────────
+    Write-Host "    PuTTY Default Settings werden gesetzt" -ForegroundColor Cyan
+    $regPath = "HKCU:\Software\SimonTatham\PuTTY\Sessions\Default%20Settings"
+    if (-not (Test-Path $regPath)) {
+        New-Item -Path "HKCU:\Software\SimonTatham\PuTTY\Sessions" -Name "Default%20Settings" -Force | Out-Null
+    }
+    try {
+        Set-ItemProperty -Path $regPath -Name "Font"        -Value "Terminal"
+        Set-ItemProperty -Path $regPath -Name "FontCharSet" -Value 0x000000FF -Type DWord
+        Write-DeployLog -Message "PuTTY Default Settings gesetzt (Font, FontCharSet)." -Level 'SUCCESS'
+    } catch {
+        Write-DeployLog -Message "Fehler beim Setzen der PuTTY Settings: $_" -Level 'ERROR'
+    }
+}
+
+Write-Host ""
 Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

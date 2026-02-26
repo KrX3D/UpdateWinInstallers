@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
@@ -11,164 +11,143 @@ Import-Module $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
-
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
-$InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
+# Dot-source config to get $NetworkShareDaten
+. (Get-SharedConfigPath -ScriptRoot $PSScriptRoot)
 
 $InstallationFolder = "$NetworkShareDaten\Customize_Windows"
-Write_LogEntry -Message "InstallationFolder gesetzt: $($InstallationFolder)" -Level "DEBUG"
+$localFilePath      = "$InstallationFolder\Tools\PortableUpdate\PortUp.exe"
+$destinationPath    = Join-Path $env:USERPROFILE "Desktop\Reducer\PortUp.exe"
 
-$localFilePath = "$InstallationFolder\Tools\PortableUpdate\PortUp.exe"
-$destinationPath = Join-Path $env:USERPROFILE "Desktop\Reducer\PortUp.exe"
-Write_LogEntry -Message "Lokaler Datei-Pfad: $($localFilePath); Ziel-Pfad: $($destinationPath)" -Level "DEBUG"
+Write-DeployLog -Message "InstallationFolder: $InstallationFolder" -Level 'INFO'
 
-$webPageUrl = "https://www.portableupdate.com/download"
-Write_LogEntry -Message "Webseite für Versionsprüfung: $($webPageUrl)" -Level "DEBUG"
-
-# Get the local file version
-$localVersion = (Get-ItemProperty -Path $localFilePath).VersionInfo.FileVersion
-Write_LogEntry -Message "Lokale Dateiversion aus $($localFilePath) ermittelt: $($localVersion)" -Level "DEBUG"
-
-$versionParts = $localVersion.Split('.')
-$trimmedVersion = ($versionParts[0], $versionParts[1], $versionParts[2] -replace '^0+(\d)', '$1') -join '.'
-$localVersion = $trimmedVersion
-Write_LogEntry -Message "Bereinigte lokale Version: $($localVersion)" -Level "DEBUG"
-
-# Retrieve the web page content
-$webPageContent = Invoke-WebRequest -Uri $webPageUrl -UseBasicParsing
-Write_LogEntry -Message "Webseite abgerufen: $($webPageUrl); InhaltLaenge: $($webPageContent.Content.Length)" -Level "DEBUG"
-
-$versionPattern = 'Portable Update (\d+\.\d+\.\d+)'
-$versionMatch = [regex]::Match($webPageContent.Content, $versionPattern)
-Write_LogEntry -Message "VersionPattern: $($versionPattern); MatchSuccess: $($versionMatch.Success)" -Level "DEBUG"
-
-if ($versionMatch.Success) {
-    $onlineversion = $versionMatch.Groups[1].Value
-    $downloadLink = "https://file.portableupdate.com/downloads/PortUp_$onlineversion.zip"
-	$downloadFileName = Split-Path -Path $downloadLink -Leaf
-	$tempFilePath = Join-Path -Path $env:TEMP -ChildPath $downloadFileName
-
-	Write-Host ""
-	Write-Host "Lokale Version: $localVersion" -foregroundcolor "Cyan"
-	Write-Host "Online Version: $onlineversion" -foregroundcolor "Cyan"
-	Write-Host ""
-	Write_LogEntry -Message "Onlineversion ermittelt: $($onlineversion); DownloadLink: $($downloadLink)" -Level "INFO"
-	
-	# Compare the local and remote file versions
-	if ($onlineversion -gt $localVersion) {
-        Write_LogEntry -Message "Update verfügbar: Online ($($onlineversion)) > Lokal ($($localVersion))" -Level "INFO"
-        # Download the updated installer to the temporary folder
-        #Invoke-WebRequest -Uri $downloadLink -OutFile $tempFilePath
-        $webClient = New-Object System.Net.WebClient
-        try {
-            Write_LogEntry -Message "Starte Download von $($downloadLink) nach $($tempFilePath)" -Level "INFO"
-            [void](Invoke-DownloadFile -Url $downloadLink -OutFile $tempFilePath)
-            Write_LogEntry -Message "Download abgeschlossen: $($tempFilePath)" -Level "DEBUG"
-        } catch {
-            Write_LogEntry -Message "Fehler beim Herunterladen von $($downloadLink): $($($_.Exception.Message))" -Level "ERROR"
-        } finally {
-            $webClient.Dispose()
-        }
-		
-		# Check if the file was completely downloaded
-		if (Test-Path $tempFilePath) {
-			try {
-				# Remove the old installer
-				Remove-Item -Path $localFilePath -Force
-				Write_LogEntry -Message "Alte Installationsdatei entfernt: $($localFilePath)" -Level "DEBUG"
-			} catch {
-				Write_LogEntry -Message "Fehler beim Entfernen der alten Installationsdatei $($localFilePath): $($($_.Exception.Message))" -Level "WARNING"
-			}
-			
-			# Extract the downloaded file to the installation folder
-			try {
-				Expand-Archive -Path $tempFilePath -DestinationPath $InstallationFolder -Force
-				Write_LogEntry -Message "Archiv entpackt von $($tempFilePath) nach $($InstallationFolder)" -Level "SUCCESS"
-			} catch {
-				Write_LogEntry -Message "Fehler beim Entpacken des Archivs $($tempFilePath): $($($_.Exception.Message))" -Level "ERROR"
-			}
-
-			# Remove the temporary file
-			try {
-				Remove-Item $tempFilePath -Force
-				Write_LogEntry -Message "Temporäre Datei entfernt: $($tempFilePath)" -Level "DEBUG"
-			} catch {
-				Write_LogEntry -Message "Fehler beim Entfernen der temporären Datei $($tempFilePath): $($($_.Exception.Message))" -Level "WARNING"
-			}
-
-			Write-Host "$ProgramName wurde aktualisiert.." -foregroundcolor "green"
-            Write_LogEntry -Message "$($ProgramName) Update erfolgreich auf Version $($onlineversion)" -Level "SUCCESS"
-		} else {
-			Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktuallisiert." -foregroundcolor "red"
-            Write_LogEntry -Message "Download fehlgeschlagen; Datei nicht gefunden: $($tempFilePath)" -Level "ERROR"
-		}
-	} else {
-		Write-Host "Kein Online Update verfügbar. $ProgramName is aktuell." -foregroundcolor "DarkGray"
-        Write_LogEntry -Message "Kein Online Update verfügbar. Online: $($onlineversion); Lokal: $($localVersion)" -Level "INFO"
-	}
+# ── Local version (from FileVersion, 3 significant parts) ─────────────────────
+$localVersion = $null
+if (Test-Path $localFilePath) {
+    $rawFV = Get-InstallerFileVersion -FilePath $localFilePath -Source FileVersion
+    if ($rawFV) {
+        $parts   = $rawFV -split '\.'
+        $trimmed = ($parts[0], $parts[1], ($parts[2] -replace '^0+(\d)', '$1')) -join '.'
+        $localVersion = $trimmed
+    }
+    Write-DeployLog -Message "Lokale Datei: PortUp.exe | Version: $localVersion" -Level 'DEBUG'
 } else {
-    Write_LogEntry -Message "Download link / Onlineversion nicht gefunden auf der Webseite: $($webPageUrl)" -Level "WARNING"
-    #Write-Host "Download link not found on the website."
+    Write-DeployLog -Message "Keine lokale PortUp.exe gefunden: $localFilePath" -Level 'WARNING'
+    Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
+    return
+}
+
+# ── Online version ─────────────────────────────────────────────────────────────
+$onlineInfo = Get-OnlineVersionInfo `
+    -Url     'https://www.portableupdate.com/download' `
+    -Regex   @('Portable Update (\d+\.\d+\.\d+)') `
+    -Context $ProgramName
+
+$onlineVersion = $onlineInfo.Version
+$downloadUrl   = if ($onlineVersion) { "https://file.portableupdate.com/downloads/PortUp_$onlineVersion.zip" } else { $null }
+
+Write-Host ""
+Write-Host "Lokale Version: $localVersion"  -ForegroundColor Cyan
+Write-Host "Online Version: $onlineVersion" -ForegroundColor Cyan
+Write-Host ""
+
+# ── Download and extract if newer ─────────────────────────────────────────────
+if ($onlineVersion -and $downloadUrl) {
+    $needDownload = $false
+    try {
+        $needDownload = [version]$onlineVersion -gt [version]$localVersion
+    } catch { $needDownload = $onlineVersion -ne $localVersion }
+
+    if ($needDownload) {
+        $zipFileName = "PortUp_$onlineVersion.zip"
+        $tempZip     = Join-Path $env:TEMP $zipFileName
+
+        $ok = Invoke-DownloadFile -Url $downloadUrl -OutFile $tempZip
+        if ($ok -and (Test-Path $tempZip)) {
+            try {
+                Expand-Archive -Path $tempZip -DestinationPath $InstallationFolder -Force
+                Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
+                Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
+                Write-DeployLog -Message "$ProgramName aktualisiert auf Version $onlineVersion." -Level 'SUCCESS'
+
+                # Re-read local version after update
+                if (Test-Path $localFilePath) {
+                    $rawFV2 = Get-InstallerFileVersion -FilePath $localFilePath -Source FileVersion
+                    if ($rawFV2) {
+                        $parts2 = $rawFV2 -split '\.'
+                        $localVersion = ($parts2[0], $parts2[1], ($parts2[2] -replace '^0+(\d)', '$1')) -join '.'
+                    }
+                }
+            } catch {
+                Write-Host "Extraktion fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+                Write-DeployLog -Message "Extraktion fehlgeschlagen: $_" -Level 'ERROR'
+                Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
+            }
+        } else {
+            Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
+            Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+            Write-DeployLog -Message "Download fehlgeschlagen." -Level 'ERROR'
+        }
+    } else {
+        Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
+    }
+} elseif (-not $onlineVersion) {
+    Write-DeployLog -Message "Online-Version konnte nicht ermittelt werden." -Level 'WARNING'
 }
 
 Write-Host ""
 
-#Check Installed Version / Install if neded
-$localVersion = (Get-ItemProperty -Path $localFilePath).VersionInfo.FileVersion
-Write_LogEntry -Message "Erneut lokale Version von $($localFilePath) ermittelt: $($localVersion)" -Level "DEBUG"
-
+# ── Installed (desktop) vs. source ────────────────────────────────────────────
+# PortUp has no registry entry — compare source file vs desktop copy
+$installedVersion = $null
 if (Test-Path $destinationPath) {
-	$installedVersion = (Get-ItemProperty -Path $destinationPath).VersionInfo.FileVersion
-	Write_LogEntry -Message "Gefundene installierte Version am Zielpfad $($destinationPath): $($installedVersion)" -Level "DEBUG"
-} else {
-    Write_LogEntry -Message "Zielpfad nicht gefunden: $($destinationPath)" -Level "DEBUG"
+    $rawDest = Get-InstallerFileVersion -FilePath $destinationPath -Source FileVersion
+    if ($rawDest) {
+        $dparts = $rawDest -split '\.'
+        $installedVersion = ($dparts[0], $dparts[1], ($dparts[2] -replace '^0+(\d)', '$1')) -join '.'
+    }
 }
 
-if ($null -ne $installedVersion) {
-    Write-Host "$ProgramName ist installiert." -foregroundcolor "green"
-    Write-Host "	Installierte Version:       $installedVersion" -foregroundcolor "Cyan"
-    Write-Host "	Installationsdatei Version: $localVersion" -foregroundcolor "Cyan"
-	Write_LogEntry -Message "$($ProgramName) ist installiert; InstallierteVersion: $($installedVersion); InstallationsdateiVersion: $($localVersion)" -Level "INFO"
-	
-    if ([version]$installedVersion -lt [version]$localVersion) {
-        Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -foregroundcolor "magenta"
-		$Install = $true
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (Update erforderlich)" -Level "INFO"
-    } elseif ([version]$installedVersion -eq [version]$localVersion) {
-        Write-Host "		Installierte Version ist aktuell." -foregroundcolor "DarkGray"
-		$Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (Version aktuell)" -Level "DEBUG"
+$Install = $false
+if ($installedVersion) {
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localVersion"     -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $installedVersion | Lokal: $localVersion" -Level 'INFO'
+
+    try { $Install = [version]$installedVersion -lt [version]$localVersion } catch { $Install = $false }
+    if ($Install) {
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
     } else {
-        #Write-Host "$ProgramName is installed, and the installed version ($installedVersion) is higher than the local version ($localVersion)."
-		$Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (installierte Version neuer)" -Level "WARNING"
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
     }
 } else {
-    #Write-Host "$ProgramName is not installed on this system."
-	$Install = $false
-    Write_LogEntry -Message "$($ProgramName) nicht installiert am Zielpfad: $($destinationPath)" -Level "INFO"
+    Write-Host "$ProgramName ist nicht installiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "$ProgramName nicht am Zielpfad gefunden." -Level 'INFO'
 }
+
 Write-Host ""
-Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: $($Install); InstallationFlag: $($InstallationFlag)" -Level "DEBUG"
 
-#Install if needed
-if($Install -eq $true -or $InstallationFlag)
-{
-	Write-Host "PortUp wird kopert"
-    Write_LogEntry -Message "Starte Kopiervorgang: Quelle $($localFilePath) -> Ziel $($destinationPath)" -Level "INFO"
+# ── Copy if needed ─────────────────────────────────────────────────────────────
+if ($Install -or $InstallationFlag) {
+    Write-Host "PortUp wird kopiert" -ForegroundColor Cyan
+    Write-DeployLog -Message "Kopiere: $localFilePath -> $destinationPath" -Level 'INFO'
 
-	if (Test-Path $localFilePath) {
-		Copy-Item -Path $localFilePath -Destination $destinationPath -Force
-        Write_LogEntry -Message "Datei kopiert: $($localFilePath) -> $($destinationPath)" -Level "SUCCESS"
-	} else {
-        Write_LogEntry -Message "Quell-Datei nicht gefunden, Kopiervorgang abgebrochen: $($localFilePath)" -Level "ERROR"
-	}
+    $destDir = Split-Path $destinationPath -Parent
+    if (-not (Test-Path $destDir)) { New-Item -Path $destDir -ItemType Directory -Force | Out-Null }
+
+    if (Test-Path $localFilePath) {
+        Copy-Item -Path $localFilePath -Destination $destinationPath -Force
+        Write-DeployLog -Message "Kopiert: $destinationPath" -Level 'SUCCESS'
+    } else {
+        Write-DeployLog -Message "Quelldatei nicht gefunden: $localFilePath" -Level 'ERROR'
+    }
 }
-Write-Host ""
-Write_LogEntry -Message "Script-Ende erreicht." -Level "INFO"
 
+Write-Host ""
 Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

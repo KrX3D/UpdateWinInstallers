@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
@@ -11,219 +11,116 @@ Import-Module $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
-
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
 $InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
+$GitHubToken        = $config.GitHubToken
 
-$wildcardFileName = "Prismatik.unofficial.64bit.Setup*.exe"
-Write_LogEntry -Message "Suchmuster für lokale Installationsdatei: $($wildcardFileName)" -Level "DEBUG"
+$localFileFilter = "Prismatik.unofficial.64bit.Setup*.exe"
+$installScript   = "$Serverip\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1"
 
-# Lokale Datei bestimmen (letzte im Ordner)
-$localFile = Get-ChildItem -Path $InstallationFolder -Filter $wildcardFileName -ErrorAction SilentlyContinue | Select-Object -Last 1
-$localFilePath = $null
-if ($localFile) {
-    $localFilePath = $localFile.FullName
-    Write_LogEntry -Message "Lokale Datei gefunden: $($localFilePath)" -Level "DEBUG"
-} else {
-    Write_LogEntry -Message "Keine lokale Datei gefunden mit Muster $($wildcardFileName) in $($InstallationFolder)" -Level "WARNING"
-}
-
-# Lokale Version ermitteln
+# ── Local version (from ProductVersion) ───────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
 $localVersion = "0.0.0"
-if ($localFilePath -and (Test-Path $localFilePath)) {
-    try {
-        $fileVersionInfo = Get-ItemProperty -Path $localFilePath -ErrorAction Stop
-        $localVersion = $fileVersionInfo.VersionInfo.ProductVersion
-        if (-not $localVersion) { $localVersion = "0.0.0" }
-        Write_LogEntry -Message "Lokale Dateiversion ermittelt: $($localVersion) für Datei $($localFilePath)" -Level "DEBUG"
-    } catch {
-        $localVersion = "0.0.0"
-        Write_LogEntry -Message "Fehler beim Abrufen der lokalen Dateieigenschaften: $($_)" -Level "WARNING"
-    }
+
+if ($localFile) {
+    $rawPV = Get-InstallerFileVersion -FilePath $localFile.FullName -Source ProductVersion
+    if ($rawPV) { $localVersion = $rawPV }
+    Write-DeployLog -Message "Lokale Datei: $($localFile.Name) | Version: $localVersion" -Level 'DEBUG'
 } else {
-    Write_LogEntry -Message "Lokale Datei nicht vorhanden oder Pfad ungültig; setze lokale Version auf $($localVersion)" -Level "DEBUG"
+    Write-DeployLog -Message "Keine lokale Installationsdatei gefunden." -Level 'WARNING'
 }
 
-# GitHub API konfigurieren
-$repoOwner = "psieg"
-$repoName  = "Lightpack"
-$apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases/latest"
-Write_LogEntry -Message "GitHub API URL: $($apiUrl)" -Level "DEBUG"
+# ── Online version via GitHub ──────────────────────────────────────────────────
+$githubInfo = Get-GitHubLatestRelease `
+    -Repo        "psieg/Lightpack" `
+    -Token       $GitHubToken `
+    -AssetFilter { param($a) $a.name -match '\.exe$' -and ($a.name -match '64' -or $a.name -match 'unofficial') } `
+    -Context     $ProgramName
 
-$headers = @{ 'User-Agent' = 'InstallationScripts/1.0'; 'Accept' = 'application/vnd.github.v3+json' }
-if ($GithubToken) { $headers['Authorization'] = "token $GithubToken" }
+$onlineVersion = if ($githubInfo) { $githubInfo.Version } else { $null }
+$downloadUrl   = if ($githubInfo) { $githubInfo.DownloadUrl } else { $null }
+$assetName     = if ($githubInfo) { $githubInfo.AssetName } else { $null }
 
-# GitHub Release abrufen
-$latestRelease = $null
-try {
-    $latestRelease = Invoke-RestMethod -Uri $apiUrl -Headers $headers -ErrorAction Stop
-    Write_LogEntry -Message "GitHub API Antwort empfangen; Tag: $($latestRelease.tag_name)" -Level "DEBUG"
-} catch {
-    Write_LogEntry -Message "Fehler beim Abrufen des GitHub Release: $($_)" -Level "ERROR"
-    $latestRelease = $null
-}
+Write-Host ""
+Write-Host "Lokale Version: $localVersion"  -ForegroundColor Cyan
+Write-Host "Online Version: $onlineVersion" -ForegroundColor Cyan
+Write-Host ""
 
-if (-not $latestRelease) {
-    Write-Host "Failed to retrieve latest release from GitHub." -ForegroundColor Yellow
-    Write_LogEntry -Message "Keine Release-Daten; Abbruch Online-Vergleich." -Level "WARNING"
-} else {
-    # Version normalisieren: extract first occurrence of numeric version string
-    $tagRaw = $latestRelease.tag_name
-    $versionMatch = [regex]::Match($tagRaw, '\d+(\.\d+)+')
-    if ($versionMatch.Success) {
-        $latestVersion = $versionMatch.Value
-        Write_LogEntry -Message "Extrahierte Online-Version: $($latestVersion) aus Tag '$tagRaw'." -Level "INFO"
-    } else {
-        # Fallback: tag komplett verwenden (kann später Probleme bei [version] verursachen)
-        $latestVersion = $tagRaw.Trim()
-        Write_LogEntry -Message "Konnte keine saubere Versionsnummer extrahieren; verwende TagName: $($latestVersion)" -Level "WARNING"
-    }
-
-    Write-Host ""
-    Write-Host "Lokale Version: $localVersion" -ForegroundColor Cyan
-    Write-Host "Online Version: $latestVersion" -ForegroundColor Cyan
-    Write-Host ""
-
-    # Versionen vergleichen sicher (versuche [version], sonst string-compare)
+# ── Download if newer ─────────────────────────────────────────────────────────
+if ($onlineVersion -and $downloadUrl) {
     $isNewer = $false
-    try {
-        if ([version]$latestVersion -gt [version]$localVersion) { $isNewer = $true }
-    } catch {
-        # nicht parsebar als [version], benutze string-Vergleich (unsicher)
-        if ($latestVersion -ne $localVersion) { $isNewer = $true }
-    }
+    try { $isNewer = [version]$onlineVersion -gt [version]$localVersion } catch { $isNewer = $onlineVersion -ne $localVersion }
 
     if ($isNewer) {
-        Write_LogEntry -Message "Online-Version ist neuer: Online $($latestVersion) > Lokal $($localVersion)" -Level "INFO"
+        $destPath = Join-Path $InstallationFolder $assetName
+        $tempPath = "$destPath.part"
 
-        # Asset-Auswahl: finde exe assets, bevorzuge 64-bit ones
-        $assets = $latestRelease.assets
-        if (-not $assets -or $assets.Count -eq 0) {
-            Write_LogEntry -Message "Keine Assets im Release gefunden." -Level "WARNING"
-        } else {
-            # Kandidaten: .exe Dateien
-            $exeAssets = $assets | Where-Object { $_.name -match '\.exe$' }
-            if ($exeAssets.Count -eq 0) {
-                Write_LogEntry -Message "Keine EXE-Assets gefunden im Release." -Level "WARNING"
-            } else {
-                # Versuche zuerst 64-bit/executable with '64' or '64bit' in name
-                $preferred = $exeAssets | Where-Object { $_.name -match '64' -or $_.name -match '64bit' } | Sort-Object { $_.name.Length } | Select-Object -First 1
-                if (-not $preferred) {
-                    # fallback: pick first exe whose name contains 'setup' or 'installer' or 'unofficial'
-                    $preferred = $exeAssets | Where-Object { $_.name -match '(setup|installer|unofficial)' } | Sort-Object { $_.name.Length } | Select-Object -First 1
-                }
-                if (-not $preferred) {
-                    # letzter fallback: erstes exe-asset
-                    $preferred = $exeAssets | Select-Object -First 1
-                }
-
-                if ($preferred) {
-                    $downloadLink = $preferred.browser_download_url
-                    $downloadFileName = $preferred.name
-                    # Zielpfad: im gleichen Verzeichnis wie lokale Datei (oder in InstallationFolder, falls keine lokale Datei)
-                    if ($localFilePath) {
-                        $targetDir = Split-Path -Path $localFilePath -Parent
-                    } else {
-                        $targetDir = $InstallationFolder
-                    }
-                    if (-not (Test-Path $targetDir)) {
-                        try { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null } catch { Write_LogEntry -Message "Fehler beim Erstellen Zielverzeichnis $targetDir : $($_)" -Level "ERROR" }
-                    }
-                    $downloadPath = Join-Path -Path $targetDir -ChildPath $downloadFileName
-
-                    Write_LogEntry -Message "Gewähltes Asset: $($downloadFileName) -> $($downloadLink). Zieldatei: $($downloadPath)" -Level "DEBUG"
-
-                    # Download: WebClient verwenden und Header setzen falls Token vorhanden
-                    $webClient = New-Object System.Net.WebClient
-                    try {
-                        if ($GithubToken) {
-                            $webClient.Headers.Add("Authorization", "token $GithubToken")
-                            $webClient.Headers.Add("User-Agent", "InstallationScripts/1.0")
-                        }
-                        Write_LogEntry -Message "Starte Download: $($downloadLink) -> $($downloadPath)" -Level "INFO"
-                        [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
-                        Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "SUCCESS"
-                    } catch {
-                        Write_LogEntry -Message "Fehler beim Herunterladen $($downloadLink): $($_)" -Level "ERROR"
-                        $downloadPath = $null
-                    } finally {
-                        if ($webClient) { $webClient.Dispose() }
-                    }
-
-                    # Nachbearbeitung: ersetzen/verschieben/alten Installer entfernen
-                    if ($downloadPath -and (Test-Path $downloadPath)) {
-                        try {
-                            if ($localFilePath -and (Test-Path $localFilePath)) {
-                                Remove-Item -Path $localFilePath -Force -ErrorAction Stop
-                                Write_LogEntry -Message "Alte Installationsdatei entfernt: $($localFilePath)" -Level "DEBUG"
-                            }
-                        } catch {
-                            Write_LogEntry -Message "Fehler beim Entfernen alter Datei $($localFilePath): $($_)" -Level "WARNING"
-                        }
-
-                        Write-Host "$ProgramName wurde aktualisiert: $downloadFileName" -ForegroundColor Green
-                        Write_LogEntry -Message "$($ProgramName) Update erfolgreich: $($downloadFileName)" -Level "SUCCESS"
-                    } else {
-                        Write_LogEntry -Message "Download fehlgeschlagen oder Datei nicht vorhanden nach Download." -Level "ERROR"
-                    }
-                } else {
-                    Write_LogEntry -Message "Kein geeignetes Asset ausgewählt (preferred ist leer)." -Level "WARNING"
-                }
+        $ok = Invoke-DownloadFile -Url $downloadUrl -OutFile $tempPath
+        if ($ok -and (Test-Path $tempPath)) {
+            Move-Item -Path $tempPath -Destination $destPath -Force
+            if ($localFile -and (Test-Path $localFile.FullName) -and $localFile.FullName -ne $destPath) {
+                Remove-PathSafe -Path $localFile.FullName | Out-Null
             }
+            Write-Host "$ProgramName wurde aktualisiert: $assetName" -ForegroundColor Green
+            Write-DeployLog -Message "$ProgramName aktualisiert: $destPath" -Level 'SUCCESS'
+            $localFile = Get-Item $destPath -ErrorAction SilentlyContinue
+        } else {
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+            Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+            Write-DeployLog -Message "Download fehlgeschlagen." -Level 'ERROR'
         }
     } else {
         Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
-        Write_LogEntry -Message "Kein Online Update verfügbar. Online: $($latestVersion); Lokal: $($localVersion)" -Level "INFO"
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
     }
+} elseif (-not $onlineVersion) {
+    Write-DeployLog -Message "Online-Version konnte nicht ermittelt werden." -Level 'WARNING'
 }
 
-# --- Installationsprüfung / Aufruf Installation Script falls benötigt ---
-# Bestimme erneut lokale Datei (aktualisiert)
-$localFile2 = Get-ChildItem -Path $InstallationFolder -Filter $wildcardFileName -ErrorAction SilentlyContinue | Select-Object -Last 1
-if ($localFile2) {
-    try { $localVersion = (Get-ItemProperty -Path $localFile2.FullName).VersionInfo.ProductVersion } catch { $localVersion = "0.0.0" }
-    Write_LogEntry -Message "Erneut lokale Datei bestimmt: $($localFile2.FullName); Version: $($localVersion)" -Level "DEBUG"
-} else {
-    Write_LogEntry -Message "Keine lokale Datei beim erneuten Check gefunden." -Level "WARNING"
-}
-
-# Registry check (wie vorher)
-$RegistryPaths = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-$Path = foreach ($RegPath in $RegistryPaths) {
-    if (Test-Path $RegPath) {
-        Get-ChildItem $RegPath | Get-ItemProperty | Where-Object { $_.DisplayName -like "$ProgramName*" }
-    }
-}
-
-$Install = $false
-if ($null -ne $Path) {
-    $installedVersion = $Path.DisplayVersion | Select-Object -First 1
-    if ($installedVersion) {
-        try {
-            if ([version]$installedVersion -lt [version]$localVersion) {
-                $Install = $true
-            }
-        } catch {
-            # fallback: string compare
-            if ($installedVersion -ne $localVersion) { $Install = $true }
-        }
-    }
-}
-
-# Install/Update ausführen
-if ($InstallationFlag) {
-    Write_LogEntry -Message "InstallationFlag gesetzt. Starte Installationsskript mit Flag." -Level "INFO"
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" -PassInstallationFlag
-    Write_LogEntry -Message "Installationsskript mit Flag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" -Level "DEBUG"
-} elseif($Install -eq $true){
-    Write_LogEntry -Message "Starte Installationsskript (Update) ohne Flag: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" -Level "INFO"
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1"
-    Write_LogEntry -Message "Installationsskript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrismatikInstallation.ps1" -Level "DEBUG"
-}
 Write-Host ""
-Write_LogEntry -Message "Script-Ende erreicht." -Level "INFO"
+
+# ── Re-evaluate local file ─────────────────────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localVersion = "0.0.0"
+if ($localFile) {
+    $rawPV = Get-InstallerFileVersion -FilePath $localFile.FullName -Source ProductVersion
+    if ($rawPV) { $localVersion = $rawPV }
+}
+
+# ── Installed vs. local ────────────────────────────────────────────────────────
+$installedInfo    = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
+$installedVersion = if ($installedInfo) { $installedInfo.VersionRaw } else { $null }
+$Install          = $false
+
+if ($installedVersion) {
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localVersion"     -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $installedVersion | Lokal: $localVersion" -Level 'INFO'
+
+    try { $Install = [version]$installedVersion -lt [version]$localVersion } catch { $Install = $false }
+    if ($Install) {
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
+    } else {
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
+    }
+} else {
+    Write-Host "$ProgramName ist nicht installiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'INFO'
+}
+
+Write-Host ""
+
+# ── Install if needed ──────────────────────────────────────────────────────────
+if ($InstallationFlag) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
+} elseif ($Install) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
+}
+
+Write-Host ""
 Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

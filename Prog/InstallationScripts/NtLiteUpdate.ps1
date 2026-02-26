@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
@@ -11,211 +11,127 @@ Import-Module $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
-
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
 $InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
 
-$InstallationFolder = "$InstallationFolder\NTLite"
-Write_LogEntry -Message "InstallationFolder gesetzt: $($InstallationFolder)" -Level "DEBUG"
+$InstallationFolder = Join-Path $InstallationFolder "NTLite"
+$localFilePath      = Join-Path $InstallationFolder "NTLite_setup_x64.exe"
+$installScript      = "$Serverip\Daten\Prog\InstallationScripts\Installation\NtLiteInstall.ps1"
 
-$localFilePath = "$InstallationFolder\NTLite_setup_x64.exe"
-$webPageUrl = "https://www.ntlite.com/download/"
-$downloadLinkPattern = 'a href="(https:\/\/downloads\.ntlite\.com\/files\/NTLite_setup_x64\.exe)"'
-$versionPattern = 'v(\d+\.\d+\.\d+)'
-Write_LogEntry -Message "Lokaler Datei-Pfad: $($localFilePath); WebPageUrl: $($webPageUrl)" -Level "DEBUG"
-Write_LogEntry -Message "DownloadLinkPattern: $($downloadLinkPattern); VersionPattern: $($versionPattern)" -Level "DEBUG"
+Write-DeployLog -Message "InstallationFolder: $InstallationFolder" -Level 'INFO'
 
-# Get the local file version
-try {
-    $fileVersionInfo = Get-Item $localFilePath | Get-ItemProperty -Name VersionInfo
-    $localVersion = $fileVersionInfo.VersionInfo.FileVersion
-    $localVersion = $localVersion -split '\.' | Select-Object -First 3
-    $localVersion = $localVersion -join '.'
-    Write_LogEntry -Message "Lokale Dateiversion ermittelt: $($localVersion) für Datei $($localFilePath)" -Level "DEBUG"
-} catch {
-    Write_LogEntry -Message "Fehler beim Ermitteln der lokalen Dateiversion für $($localFilePath): $($($_.Exception.Message))" -Level "WARNING"
-    $localVersion = $null
+# ── Local version (from FileVersion, 3 parts) ─────────────────────────────────
+$localVersion = $null
+if (Test-Path $localFilePath) {
+    $rawFV = Get-InstallerFileVersion -FilePath $localFilePath -Source FileVersion
+    if ($rawFV) {
+        $parts = ($rawFV -split '\.') | Select-Object -First 3
+        $localVersion = $parts -join '.'
+    }
+    Write-DeployLog -Message "Lokale Datei: NTLite_setup_x64.exe | Version: $localVersion" -Level 'DEBUG'
+} else {
+    Write-DeployLog -Message "Keine lokale Installationsdatei gefunden: $localFilePath" -Level 'WARNING'
 }
 
-# Retrieve the web page content
-try {
-    $webPageContent = Invoke-WebRequest -Uri $webPageUrl -UseBasicParsing
-    Write_LogEntry -Message "Webseite abgerufen: $($webPageUrl); InhaltLaenge: $($webPageContent.Content.Length)" -Level "DEBUG"
-} catch {
-    Write_LogEntry -Message "Fehler beim Abrufen der Webseite $($webPageUrl): $($($_.Exception.Message))" -Level "ERROR"
-    $webPageContent = $null
+# ── Online version ─────────────────────────────────────────────────────────────
+$onlineInfo = Get-OnlineVersionInfo `
+    -Url     'https://www.ntlite.com/download/' `
+    -Regex   @('v(\d+\.\d+\.\d+)') `
+    -Context $ProgramName
+
+$onlineVersion = $onlineInfo.Version
+$downloadUrl   = $null
+
+if ($onlineInfo.Content) {
+    $lm = [regex]::Match($onlineInfo.Content, 'href="(https://downloads\.ntlite\.com/files/NTLite_setup_x64\.exe)"')
+    if ($lm.Success) { $downloadUrl = $lm.Groups[1].Value }
 }
 
-if ($webPageContent) {
-    # Extract the download link for NTLite_setup_x64.exe
-    $match = [regex]::Match($webPageContent.Content, $downloadLinkPattern)
-    if ($match.Success) {
-        $downloadLink = $match.Groups[1].Value
-        Write_LogEntry -Message "Downloadlink extrahiert: $($downloadLink)" -Level "INFO"
+Write-Host ""
+Write-Host "Lokale Version: $localVersion"  -ForegroundColor Cyan
+Write-Host "Online Version: $onlineVersion" -ForegroundColor Cyan
+Write-Host ""
 
-        # Extract the name of the file from the download link
-        $downloadFileName = Split-Path -Leaf $downloadLink
-        Write_LogEntry -Message "Download-Dateiname bestimmt: $($downloadFileName)" -Level "DEBUG"
+# ── Download if newer ─────────────────────────────────────────────────────────
+if ($onlineVersion -and $downloadUrl) {
+    $needDownload = $false
+    try {
+        $needDownload = (-not $localVersion) -or ([version]$onlineVersion -gt [version]$localVersion)
+    } catch { $needDownload = $onlineVersion -ne $localVersion }
 
-        # Extract the online version number
-        $versionMatch = [regex]::Match($webPageContent.Content, $versionPattern)
-        if ($versionMatch.Success) {
-            $onlineVersion = $versionMatch.Groups[1].Value
+    if ($needDownload) {
+        $tempPath = Join-Path $env:TEMP "NTLite_setup_x64.exe"
+
+        $ok = Invoke-DownloadFile -Url $downloadUrl -OutFile $tempPath
+        if ($ok -and (Test-Path $tempPath)) {
             try {
-                $remoteFileVersion = [version]$onlineVersion
+                if (Test-Path $localFilePath) { Remove-Item -Path $localFilePath -Force }
+                Move-Item -Path $tempPath -Destination $localFilePath -Force
+                Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
+                Write-DeployLog -Message "$ProgramName aktualisiert: $localFilePath" -Level 'SUCCESS'
             } catch {
-                $remoteFileVersion = $null
-                Write_LogEntry -Message "Fehler beim Parsen der Online-Versionsnummer: $($onlineVersion)" -Level "WARNING"
-            }
-            Write_LogEntry -Message "Online-Version extrahiert: $($onlineVersion)" -Level "DEBUG"
-
-            Write-Host ""
-            Write-Host "Lokale Version: $localVersion" -foregroundcolor "Cyan"
-            Write-Host "Online Version: $remoteFileVersion" -foregroundcolor "Cyan"
-            Write-Host ""
-
-            # Compare the local and remote file versions
-            try {
-                if ($remoteFileVersion -gt $localVersion) {
-                    Write_LogEntry -Message "Update verfügbar: Online ($($remoteFileVersion)) > Lokal ($($localVersion))" -Level "INFO"
-
-                    $directoryPath = [System.IO.Path]::GetTempPath()
-                    # Modify the $downloadPath variable to include the extracted file name
-                    $downloadPath = Join-Path $directoryPath $downloadFileName
-                    Write_LogEntry -Message "Download-Pfad gesetzt: $($downloadPath)" -Level "DEBUG"
-
-                    # Download the updated installer
-                    $webClient = New-Object System.Net.WebClient
-                    try {
-                        Write_LogEntry -Message "Starte Download von $($downloadLink) nach $($downloadPath)" -Level "INFO"
-                        [void](Invoke-DownloadFile -Url $downloadLink -OutFile $downloadPath)
-                        Write_LogEntry -Message "Download abgeschlossen: $($downloadPath)" -Level "DEBUG"
-                    } catch {
-                        Write_LogEntry -Message "Fehler beim Herunterladen von $($downloadLink): $($($_.Exception.Message))" -Level "ERROR"
-                    } finally {
-                        $webClient.Dispose()
-                    }
-
-                    # Check if the file was completely downloaded
-                    if (Test-Path $downloadPath) {
-                        try {
-                            # Remove the old installer
-                            Remove-Item -Path $localFilePath -Force
-                            Write_LogEntry -Message "Alte Installationsdatei entfernt: $($localFilePath)" -Level "DEBUG"
-                        } catch {
-                            Write_LogEntry -Message "Fehler beim Entfernen der alten Installationsdatei $($localFilePath): $($($_.Exception.Message))" -Level "WARNING"
-                        }
-
-                        try {
-                            # Move the downloaded file to the installation folder
-                            Move-Item -Path $downloadPath -Destination $installationFolder
-                            Write_LogEntry -Message "Heruntergeladene Datei verschoben nach: $($installationFolder)" -Level "SUCCESS"
-                        } catch {
-                            Write_LogEntry -Message "Fehler beim Verschieben der Datei $($downloadPath) nach $($installationFolder): $($($_.Exception.Message))" -Level "ERROR"
-                        }
-
-                        Write-Host "$ProgramName wurde aktualisiert.." -foregroundcolor "green"
-                    } else {
-                        Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktuallisiert." -foregroundcolor "red"
-                        Write_LogEntry -Message "Download fehlgeschlagen; Datei nicht gefunden: $($downloadPath)" -Level "ERROR"
-                    }
-                } else {
-                    Write_LogEntry -Message "Kein Online Update verfügbar. Online: $($remoteFileVersion); Lokal: $($localVersion)" -Level "INFO"
-                    Write-Host "Kein Online Update verfügbar. $ProgramName is aktuell." -foregroundcolor "DarkGray"
-                }
-            } catch {
-                Write_LogEntry -Message "Fehler beim Vergleich der Versionen: $($($_.Exception.Message))" -Level "ERROR"
+                Write-DeployLog -Message "Fehler beim Ersetzen der Datei: $_" -Level 'ERROR'
+                Write-Host "Fehler beim Aktualisieren. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
             }
         } else {
-            Write_LogEntry -Message "Online-Versionsnummer konnte nicht extrahiert werden von $($webPageUrl)" -Level "WARNING"
-            #Write-Host "Online version number not found on the website."
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+            Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+            Write-DeployLog -Message "Download fehlgeschlagen." -Level 'ERROR'
         }
     } else {
-        Write_LogEntry -Message "Downloadlink nicht auf der Webseite gefunden: $($webPageUrl)" -Level "WARNING"
-        #Write-Host "Download link not found on the website."
+        Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
     }
-} else {
-    Write_LogEntry -Message "Webseiteninhalt leer oder Fehler beim Abrufen: $($webPageUrl)" -Level "ERROR"
+} elseif (-not $onlineVersion) {
+    Write-DeployLog -Message "Online-Version konnte nicht ermittelt werden." -Level 'WARNING'
 }
 
 Write-Host ""
 
-#Check Installed Version / Install if neded
-try {
-    $FoundFile = Get-ChildItem $localFilePath
-    Write_LogEntry -Message "Gefundene lokale Datei für Prüfung: $($FoundFile.FullName)" -Level "DEBUG"
-} catch {
-    Write_LogEntry -Message "Keine lokale Datei für Prüfung gefunden mit Pfad: $($localFilePath)" -Level "WARNING"
-    $FoundFile = $null
-}
-if ($FoundFile) {
-    try {
-        $localVersion = (Get-Item $FoundFile).VersionInfo.ProductVersion
-        Write_LogEntry -Message "Lokale Produktversion ermittelt: $($localVersion)" -Level "DEBUG"
-    } catch {
-        Write_LogEntry -Message "Fehler beim Ermitteln der Produktversion der Datei $($FoundFile.FullName): $($($_.Exception.Message))" -Level "WARNING"
-        $localVersion = $null
-    }
-} else {
-    $localVersion = $null
-}
-
-#$Path  = Get-ChildItem 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -like $ProgramName + '*' }
-
-$RegistryPaths = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-Write_LogEntry -Message "Registry-Pfade für Abfrage: $($RegistryPaths -join ', ')" -Level "DEBUG"
-
-$Path = foreach ($RegPath in $RegistryPaths) {
-    if (Test-Path $RegPath) {
-        Get-ChildItem $RegPath | Get-ItemProperty | Where-Object { $_.DisplayName -like "$ProgramName*" }
+# ── Re-evaluate local version ──────────────────────────────────────────────────
+$localVersion = $null
+if (Test-Path $localFilePath) {
+    $rawFV = Get-InstallerFileVersion -FilePath $localFilePath -Source FileVersion
+    if ($rawFV) {
+        $parts = ($rawFV -split '\.') | Select-Object -First 3
+        $localVersion = $parts -join '.'
     }
 }
-Write_LogEntry -Message "Registry-Abfrage durchgeführt; Ergebnis vorhanden: $($([bool]$Path))" -Level "DEBUG"
 
-if ($null -ne $Path) {
-    $installedVersion = $Path.DisplayVersion | Select-Object -First 1
-    Write_LogEntry -Message "Gefundene installierte Version in Registry: $($installedVersion)" -Level "INFO"
-    Write-Host "$ProgramName ist installiert." -foregroundcolor "green"
-    Write-Host "	Installierte Version:       $installedVersion" -foregroundcolor "Cyan"
-    Write-Host "	Installationsdatei Version: $localVersion" -foregroundcolor "Cyan"
-	
-    if ([version]$installedVersion -lt [version]$localVersion) {
-        Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -foregroundcolor "magenta"
-		$Install = $true
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (installiere neues Paket)" -Level "INFO"
-    } elseif ([version]$installedVersion -eq [version]$localVersion) {
-        Write-Host "		Installierte Version ist aktuell." -foregroundcolor "DarkGray"
-		$Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (Version aktuell)" -Level "DEBUG"
+# ── Installed vs. local ────────────────────────────────────────────────────────
+$installedInfo    = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
+$installedVersion = if ($installedInfo) { $installedInfo.VersionRaw } else { $null }
+$Install          = $false
+
+if ($installedVersion) {
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localVersion"     -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $installedVersion | Lokal: $localVersion" -Level 'INFO'
+
+    try { $Install = [version]$installedVersion -lt [version]$localVersion } catch { $Install = $false }
+    if ($Install) {
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
     } else {
-        #Write-Host "$ProgramName is installed, and the installed version ($installedVersion) is higher than the local version ($localVersion)."
-		$Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (installierte Version neuer)" -Level "WARNING"
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
     }
 } else {
-    #Write-Host "$ProgramName is not installed on this system."
-	$Install = $false
-    Write_LogEntry -Message "$($ProgramName) ist nicht in der Registry gefunden worden (nicht installiert)." -Level "INFO"
+    Write-Host "$ProgramName ist nicht installiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'INFO'
 }
-Write-Host ""
-Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: $($Install)" -Level "DEBUG"
 
-#Install if needed
-if($InstallationFlag){
-    Write_LogEntry -Message "InstallationFlag gesetzt; rufe Installationsskript mit Flag auf: $($Serverip)\Daten\Prog\InstallationScripts\Installation\NtLiteInstall.ps1" -Level "INFO"
-	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\NtLiteInstall.ps1" -PassInstallationFlag
-    Write_LogEntry -Message "Installationsskript mit Flag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\NtLiteInstall.ps1" -Level "DEBUG"
-}
-elseif($Install -eq $true){
-    Write_LogEntry -Message "Starte externes Installationsskript (Update): $($Serverip)\Daten\Prog\InstallationScripts\Installation\NtLiteInstall.ps1" -Level "INFO"
-	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\NtLiteInstall.ps1"
-    Write_LogEntry -Message "Externes Installationsskript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\NtLiteInstall.ps1" -Level "DEBUG"
-}
 Write-Host ""
-Write_LogEntry -Message "Script-Ende erreicht." -Level "INFO"
 
+# ── Install if needed ──────────────────────────────────────────────────────────
+if ($InstallationFlag) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
+} elseif ($Install) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
+}
+
+Write-Host ""
 Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
