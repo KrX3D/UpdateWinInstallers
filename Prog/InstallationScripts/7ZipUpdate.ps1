@@ -1,5 +1,5 @@
 param(
-  [switch]$InstallationFlag = $false
+    [switch]$InstallationFlag = $false
 )
 
 $ProgramName = "7-Zip"
@@ -11,146 +11,140 @@ Import-Module $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
 $InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
-Write-DeployLog -Message "Konfigurationsdatei importiert (DeployToolkit)." -Level "INFO"
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
 
-$downloadPageUrl = "https://www.7-zip.org/download.html"
-$localPattern = Join-Path $InstallationFolder "7z*-x64.exe"
-$versionRegex = '7z(\d+)-x64\.exe'
-$convert7Zip = { param($digits) Convert-7ZipDigitsToVersion $digits }
+$localFileFilter = "7z*.exe"
+$installScript   = "$Serverip\Daten\Prog\InstallationScripts\Installation\7ZipInstallation.ps1"
 
-Write-DeployLog -Message "Download-Seite URL: $downloadPageUrl" -Level "INFO"
-Write-DeployLog -Message "Suche nach lokaler Installationsdatei: $localPattern" -Level "INFO"
+# ── Local version ─────────────────────────────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localVersion = $null
 
-$local = Get-InstallerFile -PathPattern $localPattern -FileNameRegex $versionRegex -Convert $convert7Zip -FallbackToProductVersion
-if (-not $local) {
-  Write-DeployLog -Message "Keine lokale Installationsdatei gefunden - Download kann nicht ausgeführt werden" -Level "WARNING"
+if ($localFile) {
+    $rawVer       = Get-InstallerFileVersion -FilePath $localFile.FullName -Source FileVersion
+    $localVersion = Convert-7ZipDigitsToVersion -Digits ($rawVer -replace '\.','' -replace '[^0-9]','')
+    Write-DeployLog -Message "Lokale Datei: $($localFile.Name) | Version: $localVersion" -Level 'DEBUG'
 } else {
-  Write-DeployLog -Message "Lokale Installationsdatei gefunden: $($local.File.Name)" -Level "SUCCESS"
-  Write-DeployLog -Message "Lokale Version ermittelt: $($local.Version)" -Level "INFO"
+    Write-DeployLog -Message "Keine lokale Installationsdatei gefunden." -Level 'WARNING'
+}
 
-  Write-DeployLog -Message "Lade Download-Seite herunter..." -Level "INFO"
-  $pageContent = Invoke-WebRequestCompat -Uri $downloadPageUrl -ReturnContent
+# ── Online version (beta-filtered) ────────────────────────────────────────────
+$pageContent   = $null
+$onlineVersion = $null
+$downloadUrl   = $null
 
-  if ($pageContent) {
-    Write-DeployLog -Message "Download-Seite erfolgreich abgerufen (Größe: $($pageContent.Length) Zeichen)" -Level "SUCCESS"
-    Write-DeployLog -Message "Analysiere Seiteninhalt für Download-Links..." -Level "INFO"
+try {
+    $response    = Invoke-WebRequestCompat -Uri 'https://www.7-zip.org/download.html'
+    $pageContent = $response.Content
+} catch {
+    Write-DeployLog -Message "Fehler beim Abrufen der Download-Seite: $_" -Level 'ERROR'
+}
 
-    $patternLink = '<A href="([^"]+-x64\.exe)">Download<\/A>'
-    $patternVer  = 'a/7z(\d+)-x64\.exe'
-    $patternBeta = '7-Zip (\d+\.\d+).+?\(beta\)'
+if ($pageContent) {
+    $linkPattern = 'href="(/?a/7z(\d{4,})(?:-beta\d*)?-x64\.exe)"'
+    $allMatches  = [regex]::Matches($pageContent, $linkPattern)
 
-    $betaVersion = Get-OnlineVersionFromContent -Content $pageContent -Regex $patternBeta
-    Write-DeployLog -Message "Beta-Version gefunden: $betaVersion" -Level "DEBUG"
+    $best = $null
+    foreach ($m in $allMatches) {
+        $link   = $m.Groups[1].Value
+        $digits = $m.Groups[2].Value
+        if ($link -match '-beta') { continue }
 
-    $matches = [regex]::Matches($pageContent, $patternLink)
-    Write-DeployLog -Message "Gefundene Download-Links: $($matches.Count)" -Level "INFO"
-
-    $bestOnlineV = $null
-    $bestOnlineLink = $null
-    $bestOnlineDigits = $null
-
-    foreach ($match in $matches) {
-      $href = $match.Groups[1].Value
-      Write-DeployLog -Message "Prüfe Download-Link: $href" -Level "DEBUG"
-
-      $v = Get-VersionFromFileName -Name $href -Regex $patternVer -Convert $convert7Zip
-      if (-not $v) {
-        Write-DeployLog -Message "Version konnte aus Link nicht extrahiert werden" -Level "DEBUG"
-        continue
-      }
-
-      Write-DeployLog -Message "Gefundene Version: $v" -Level "DEBUG"
-      if ($betaVersion -and ($v -eq $betaVersion)) {
-        Write-DeployLog -Message "Version $v ist Beta-Version und wird übersprungen" -Level "DEBUG"
-        continue
-      } else {
-        Write-DeployLog -Message "Version $v ist keine Beta-Version" -Level "DEBUG"
-      }
-
-      if (-not $bestOnlineV -or $v -gt $bestOnlineV) {
-        Write-DeployLog -Message "Vergleiche Versionen: Aktuell höchste ($bestOnlineV) vs. Gefundene ($v)" -Level "DEBUG"
-        $bestOnlineV = $v
-        $bestOnlineLink = $href
-        $bestOnlineDigits = [regex]::Match($href, $patternVer).Groups[1].Value
-      }
+        $ver = Convert-7ZipDigitsToVersion -Digits $digits
+        if ($ver -and (-not $best -or $ver -gt $best.Version)) {
+            $best = [PSCustomObject]@{ Version = $ver; Link = $link }
+        }
     }
 
-    Write-Host ""
-    Write-Host "Lokale Version: $($local.Version)" -ForegroundColor Cyan
-    Write-Host "Online Version: $bestOnlineV" -ForegroundColor Cyan
-    Write-Host ""
+    if ($best) {
+        $onlineVersion = $best.Version
+        $downloadUrl   = "https://www.7-zip.org/" + $best.Link.TrimStart('/')
+        Write-DeployLog -Message "Online-Version (stabil): $onlineVersion" -Level 'INFO'
+    } else {
+        Write-DeployLog -Message "Keine stabile Online-Version gefunden." -Level 'WARNING'
+    }
+}
 
-    Write-DeployLog -Message "Versionsvergleich - Lokal: $($local.Version), Online: $bestOnlineV" -Level "INFO"
+Write-Host ""
+Write-Host "Lokale Version: $localVersion"  -ForegroundColor Cyan
+Write-Host "Online Version: $onlineVersion" -ForegroundColor Cyan
+Write-Host ""
 
-    if ($bestOnlineV) {
-      $downloadUrl = ($downloadPageUrl -replace "download\.html", $bestOnlineLink)
-      $outFile = Join-Path $InstallationFolder ("7z{0}-x64.exe" -f $bestOnlineDigits)
+# ── Download if newer ─────────────────────────────────────────────────────────
+if ($localFile -and $onlineVersion -and $downloadUrl) {
+    $localVersionForCompare = if ($localVersion) { $localVersion } else { [version]'0.0' }
 
-      if ($bestOnlineV -gt $local.Version) {
-        [void](Invoke-InstallerDownload -Url $downloadUrl -OutFile $outFile -ConfirmDownload -ReplaceOld -RemovePattern $localPattern -KeepFiles @($outFile) -Context $ProgramName -EmitHostStatus -SuccessHostMessage "$ProgramName wurde aktualisiert.." -FailureHostMessage "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -SuccessLogMessage "$ProgramName wurde erfolgreich aktualisiert auf Version $bestOnlineV" -FailureLogMessage "Neue Version erkannt, Download aber fehlgeschlagen")
-      } else {
+    if ($onlineVersion -gt $localVersionForCompare) {
+        $fileName = Split-Path $downloadUrl -Leaf
+        $destPath = Join-Path $InstallationFolder $fileName
+
+        [void](Invoke-InstallerDownload `
+            -Url                $downloadUrl `
+            -OutFile            $destPath `
+            -ConfirmDownload `
+            -ReplaceOld `
+            -RemoveFiles        @($localFile.FullName) `
+            -KeepFiles          @($destPath) `
+            -EmitHostStatus `
+            -SuccessHostMessage "$ProgramName wurde aktualisiert.." `
+            -FailureHostMessage "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." `
+            -SuccessLogMessage  "$ProgramName erfolgreich aktualisiert: $destPath" `
+            -FailureLogMessage  "Download fehlgeschlagen: $destPath" `
+            -Context            $ProgramName)
+    } else {
         Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
-        Write-DeployLog -Message "Keine neuere Version verfügbar - $ProgramName ist aktuell" -Level "INFO"
-      }
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
     }
-  } else {
-    Write-DeployLog -Message "Download-Seite konnte nicht geladen werden" -Level "ERROR"
-  }
+} elseif (-not $localFile) {
+    Write-DeployLog -Message "Keine lokale Installationsdatei – Update-Vergleich übersprungen." -Level 'WARNING'
 }
 
 Write-Host ""
-Write-DeployLog -Message "Prüfe installierte Version von $ProgramName..." -Level "INFO"
 
-$installedInfo = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
-$installedV = if ($installedInfo) { $installedInfo.Version } else { $null }
-$localAfter = Get-InstallerVersionForComparison -PathPattern $localPattern -FileNameRegex $versionRegex -Convert $convert7Zip -Context $ProgramName -Description "Aktuelle lokale Installationsdatei Version"
-$localVersion = $localAfter.Version
-if ($localAfter.InstallerFile) {
-  Write-DeployLog -Message "Aktuelle lokale Installationsdatei: $($localAfter.InstallerFile.Name) (Version: $localVersion)" -Level "INFO"
+# ── Re-evaluate local file ────────────────────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localVersion = $null
+if ($localFile) {
+    $rawVer       = Get-InstallerFileVersion -FilePath $localFile.FullName -Source FileVersion
+    $localVersion = Convert-7ZipDigitsToVersion -Digits ($rawVer -replace '\.','' -replace '[^0-9]','')
 }
 
-if ($installedV) {
-  Write-DeployLog -Message "$ProgramName ist installiert - Version: $installedV" -Level "SUCCESS"
-  Write-DeployLog -Message "Vergleiche installierte Version ($installedV) mit lokaler Datei ($localVersion)" -Level "INFO"
+# ── Installed vs. local ───────────────────────────────────────────────────────
+$installedInfo    = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
+$installedVersion = if ($installedInfo) { $installedInfo.VersionRaw } else { $null }
+$Install          = $false
 
-  Write-Host "$ProgramName ist installiert." -ForegroundColor Green
-  Write-Host "    Installierte Version:       $installedV" -ForegroundColor Cyan
-  Write-Host "    Installationsdatei Version: $localVersion" -ForegroundColor Cyan
+if ($installedVersion) {
+    $installedVerObj = Convert-7ZipDigitsToVersion -Digits ($installedVersion -replace '\.','' -replace '[^0-9]','')
 
-  if (-not $InstallationFlag) {
-    $versionState = Compare-VersionState -InstalledVersion $installedV -InstallerVersion $localVersion -Context $ProgramName
-    [void](Show-VersionStateSummary -State $versionState -ProgramName $ProgramName -Context $ProgramName)
-  }
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVerObj" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localVersion"   -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $installedVerObj | Lokal: $localVersion" -Level 'INFO'
+
+    $Install = try { $installedVerObj -lt $localVersion } catch { $false }
+    if ($Install) {
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
+    } else {
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
+    }
 } else {
-  Write-DeployLog -Message "$ProgramName wurde nicht in der Registrierung gefunden." -Level "INFO"
-}
-
-$plan = Get-InstallerExecutionPlan -ProgramName $ProgramName -InstalledVersion $installedV -InstallerVersion $localVersion -InstallationFlag:$InstallationFlag
-if ($plan.ShouldExecute) {
-  if ($plan.PassInstallationFlag) {
-    Write-Host "        InstallationFlag gesetzt. Installation wird gestartet." -ForegroundColor Magenta
-    Write-DeployLog -Message "InstallationFlag gesetzt - starte Installation mit -InstallationFlag" -Level "INFO"
-  } elseif (-not ($installedV -and -not $InstallationFlag)) {
-    Write-Host "        Veraltete Version erkannt. Update wird gestartet." -ForegroundColor Magenta
-    Write-DeployLog -Message "Veraltete Version erkannt. Update wird gestartet." -Level "INFO"
-  }
-
-  $installScript = "$Serverip\Daten\Prog\InstallationScripts\Installation\7ZipInstall.ps1"
-  $started = Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag:$plan.PassInstallationFlag
-  if (-not $started) {
-    Write-DeployLog -Message "Installationsskript konnte nicht gestartet werden: $installScript" -Level "ERROR"
-  }
-} else {
-  if (-not $installedV) {
-    Write-DeployLog -Message "Keine Installation oder Update erforderlich (Programm nicht installiert und kein InstallationFlag)." -Level "INFO"
-  } else {
-    Write-DeployLog -Message "Keine Installation oder Update erforderlich" -Level "INFO"
-  }
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'INFO'
 }
 
 Write-Host ""
-Stop-DeployContext -FinalizeMessage "7-Zip Update-Script erfolgreich abgeschlossen"
+
+# ── Install if needed ─────────────────────────────────────────────────────────
+if ($InstallationFlag) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
+} elseif ($Install) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
+}
+
+Write-Host ""
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

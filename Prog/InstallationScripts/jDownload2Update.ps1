@@ -1,22 +1,41 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
 $ProgramName = "jDownloader 2"
 $ScriptType = "Update"
 
-$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
-Import-Module $dtPath -Force -ErrorAction Stop
+# === Logger-Header: automatisch eingefügt ===
+$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
 
-Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
+if (Test-Path $modulePath) {
+    Import-Module -Name $modulePath -Force -ErrorAction Stop
+
+    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
+        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
+    }
+    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
+
+    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
+        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
+    }
+}
+# === Ende Logger-Header ===
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
-$InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+# Import shared configuration
+$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
+
+if (Test-Path -Path $configPath) {
+    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
+    Write_LogEntry -Message "Konfigurationsdatei geladen: $($configPath)" -Level "DEBUG"
+} else {
+    Write-Host ""
+    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
+    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
+    exit
+}
 
 $InstallationFile = "$InstallationFolder\JDownloader2*.exe"
 
@@ -375,7 +394,10 @@ Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: 
 if ($InstallationFlag) {
     Write_LogEntry -Message "InstallationFlag gesetzt. Starte Installationsskript mit Flag." -Level "INFO"
     try {
-        Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" -PassInstallationFlag
+        & $PSHostPath `
+            -NoLogo -NoProfile -ExecutionPolicy Bypass `
+            -File "$Serverip\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" `
+            -InstallationFlag
         Write_LogEntry -Message "Installationsskript mit Flag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" -Level "DEBUG"
     } catch {
         Write_LogEntry -Message "Fehler beim Aufruf des Installationsskriptes mit Flag: $($_.Exception.Message)" -Level "ERROR"
@@ -384,7 +406,9 @@ if ($InstallationFlag) {
 elseif ($Install -eq $true) {
     Write_LogEntry -Message "Starte Installationsskript (Update) ohne Flag." -Level "INFO"
     try {
-        Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1"
+        & $PSHostPath `
+            -NoLogo -NoProfile -ExecutionPolicy Bypass `
+            -File "$Serverip\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1"
         Write_LogEntry -Message "Installationsskript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" -Level "DEBUG"
     } catch {
         Write_LogEntry -Message "Fehler beim Aufruf des Installationsskriptes: $($_.Exception.Message)" -Level "ERROR"
@@ -393,4 +417,9 @@ elseif ($Install -eq $true) {
 Write-Host ""
 Write_LogEntry -Message "Script-Ende erreicht." -Level "DEBUG"
 
-Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
+# === Logger-Footer: automatisch eingefügt ===
+if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
+    Write_LogEntry -Message "Script beendet: $($ProgramName) - $($ScriptType)" -Level "INFO"
+    Finalize_LogSession | Out-Null
+}
+# === Ende Logger-Footer ===
