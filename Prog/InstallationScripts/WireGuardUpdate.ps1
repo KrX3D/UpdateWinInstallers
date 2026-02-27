@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
@@ -14,10 +14,11 @@ Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoo
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
 
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
 $InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
+$NetworkShareDaten  = $config.NetworkShareDaten
 
 # Define the directory path and file wildcard
 $InstallationFolder = "$InstallationFolder\WireGuard"
@@ -49,12 +50,12 @@ if ($installerFile) {
         Select-Object -First 1
     Write_LogEntry -Message "Ermittelte Online-Version: $($latestVersion)" -Level "DEBUG"
 
-	Write-Host ""
-	Write-Host "Lokale Version: $localVersion" -foregroundcolor "Cyan"
-	Write-Host "Online Version: $latestVersion" -foregroundcolor "Cyan"
-	Write-Host ""
-	Write_LogEntry -Message "Vergleich Local: $($localVersion) vs Online: $($latestVersion)" -Level "INFO"
-	
+    Write-Host ""
+    Write-Host "Lokale Version: $localVersion" -ForegroundColor "Cyan"
+    Write-Host "Online Version: $latestVersion" -ForegroundColor "Cyan"
+    Write-Host ""
+    Write_LogEntry -Message "Vergleich Local: $($localVersion) vs Online: $($latestVersion)" -Level "INFO"
+    
     # Compare the installed version with the latest version
     if ($localVersion -lt $latestVersion) {
         Write_LogEntry -Message "Online-Version neuer als lokal: $($latestVersion) > $($localVersion) - Download wird gestartet" -Level "INFO"
@@ -66,8 +67,6 @@ if ($installerFile) {
         $downloadPath = "$InstallationFolder\wireguard-amd64-$latestVersion.msi"
         Write_LogEntry -Message "Download-Pfad gesetzt: $($downloadPath)" -Level "DEBUG"
 
-        # Download the newer version
-        #Invoke-RestMethod -Uri $downloadUrl -OutFile $downloadPath
         $webClient = New-Object System.Net.WebClient
         try {
             [void](Invoke-DownloadFile -Url $downloadUrl -OutFile $downloadPath)
@@ -77,35 +76,34 @@ if ($installerFile) {
         } finally {
             $null = $webClient.Dispose()
         }
-		
-		# Check if the file was completely downloaded
-		if (Test-Path $downloadPath) {
-			# Remove the old installer
+
+        # Check if the file was completely downloaded
+        if (Test-Path $downloadPath) {
+            # Remove the old installer
             try {
-			    Remove-Item -Path $installerFile.FullName -Force
+                Remove-Item -Path $installerFile.FullName -Force
                 Write_LogEntry -Message "Alte Installationsdatei entfernt: $($installerFile.FullName)" -Level "DEBUG"
             } catch {
                 Write_LogEntry -Message "Fehler beim Entfernen der alten Installationsdatei $($installerFile.FullName): $($_)" -Level "WARNING"
             }
 
-			Write-Host "$ProgramName wurde aktualisiert.." -foregroundcolor "green"
+            Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor "Green"
             Write_LogEntry -Message "$($ProgramName) Update erfolgreich: $($downloadPath)" -Level "SUCCESS"
-		} else {
-			Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktuallisiert." -foregroundcolor "red"
+        } else {
+            Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor "Red"
             Write_LogEntry -Message "Download fehlgeschlagen: $($downloadPath) nicht gefunden nach Download" -Level "ERROR"
-		}
+        }
     } else {
-		Write-Host "Kein Online Update verfügbar. $ProgramName is aktuell." -foregroundcolor "DarkGray"
+        Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor "DarkGray"
         Write_LogEntry -Message "Kein Update verfügbar: Online $($latestVersion) <= Local $($localVersion)" -Level "INFO"
     }
 } else {
     Write_LogEntry -Message "Keine WireGuard-Installationsdatei gefunden im Pfad: $($installerPath)" -Level "WARNING"
-    #Write-Host "No WireGuard installer found in the specified path."
 }
 
 Write-Host ""
 
-#Check Installed Version / Install if neded
+# Check Installed Version / Install if needed
 $installerFile = Get-InstallerFilePath -PathPattern $installerPath
 if ($installerFile) {
     $versionPattern = 'wireguard-amd64-(\d+\.\d+\.\d+)\.msi'
@@ -114,8 +112,6 @@ if ($installerFile) {
 } else {
     Write_LogEntry -Message "Keine Installationsdatei gefunden beim zweiten Scan: $($installerPath)" -Level "DEBUG"
 }
-
-#$Path  = Get-ChildItem 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -like $ProgramName + '*' }
 
 $RegistryPaths = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
 Write_LogEntry -Message "Registry-Pfade für Suche konfiguriert: $($RegistryPaths -join ', ')" -Level "DEBUG"
@@ -131,39 +127,37 @@ $Path = foreach ($RegPath in $RegistryPaths) {
 
 if ($null -ne $Path) {
     $installedVersion = $Path.DisplayVersion | Select-Object -First 1
-    Write-Host "$ProgramName ist installiert." -foregroundcolor "green"
-    Write-Host "	Installierte Version:       $installedVersion" -foregroundcolor "Cyan"
-    Write-Host "	Installationsdatei Version: $localVersion" -foregroundcolor "Cyan"
+    Write-Host "$ProgramName ist installiert." -ForegroundColor "Green"
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor "Cyan"
+    Write-Host "    Installationsdatei Version: $localVersion" -ForegroundColor "Cyan"
     Write_LogEntry -Message "Gefundene installierte Version aus Registry: $($installedVersion); Datei-Version: $($localVersion)" -Level "INFO"
-	
+
     if ([version]$installedVersion -lt [version]$localVersion) {
-        Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -foregroundcolor "magenta"
-		$Install = $true
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor "Magenta"
+        $Install = $true
         Write_LogEntry -Message "Install erforderlich: Registry $($installedVersion) < Datei $($localVersion)" -Level "INFO"
     } elseif ([version]$installedVersion -eq [version]$localVersion) {
-        Write-Host "		Installierte Version ist aktuell." -foregroundcolor "DarkGray"
-		$Install = $false
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor "DarkGray"
+        $Install = $false
         Write_LogEntry -Message "Install nicht erforderlich: InstalledVersion == LocalVersion ($($localVersion))" -Level "INFO"
     } else {
-        #Write-Host "$ProgramName is installed, and the installed version ($installedVersion) is higher than the local version ($localVersion)."
-		$Install = $false
+        $Install = $false
         Write_LogEntry -Message "InstalledVersion ($($installedVersion)) > LocalVersion ($($localVersion)); keine Aktion" -Level "WARNING"
     }
 } else {
-    #Write-Host "$ProgramName is not installed on this system."
-	$Install = $false
+    $Install = $false
     Write_LogEntry -Message "Keine Registry-Einträge für $($ProgramName) gefunden" -Level "DEBUG"
 }
 Write-Host ""
 
-#Install if needed
-if($InstallationFlag){
+# Install if needed
+if ($InstallationFlag) {
     Write_LogEntry -Message "Starte externes Installationsskript aufgrund InstallationFlag" -Level "INFO"
-	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\WireGuardInstall.ps1" -PassInstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$NetworkShareDaten\Prog\InstallationScripts\Installation\WireGuardInstall.ps1" -PassInstallationFlag
     Write_LogEntry -Message "Externer Aufruf abgeschlossen: WireGuardInstall.ps1 mit -InstallationFlag" -Level "DEBUG"
-} elseif($Install -eq $true){
+} elseif ($Install -eq $true) {
     Write_LogEntry -Message "Starte externes Installationsskript aufgrund Install=true" -Level "INFO"
-	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\WireGuardInstall.ps1"
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$NetworkShareDaten\Prog\InstallationScripts\Installation\WireGuardInstall.ps1"
     Write_LogEntry -Message "Externer Aufruf abgeschlossen: WireGuardInstall.ps1" -Level "DEBUG"
 }
 Write-Host ""

@@ -1,23 +1,43 @@
-﻿param(
+param(
     [switch]$InstallationFlag = $false
 )
 
 $ProgramName = "Microsoft Windows Desktop Runtime"
 $ScriptType  = "Update"
 
-$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
-Import-Module $dtPath -Force -ErrorAction Stop
+# === Logger-Header: automatisch eingefügt ===
+$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
 
-Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
+if (Test-Path $modulePath) {
+    Import-Module -Name $modulePath -Force -ErrorAction Stop
+
+    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
+        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
+    }
+    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
+
+    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
+        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
+    }
+}
+# === Ende Logger-Header ===
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
 
-$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
-$InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+# Import shared configuration
+$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
+Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
+
+if (Test-Path -Path $configPath) {
+    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
+    Write_LogEntry -Message "Konfigurationsdatei geladen: $($configPath)" -Level "INFO"
+} else {
+    Write-Host ""
+    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
+    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
+    exit 1
+}
 
 # Define the directory path and file wildcard
 $InstallationFolder = "$InstallationFolder\ImageGlass"
@@ -229,7 +249,7 @@ if ($latestRelease) {
             $wc = New-Object System.Net.WebClient
             $wc.Headers.Add("user-agent", $headers['User-Agent'])
             if ($headers.ContainsKey('Authorization')) { $wc.Headers.Add("Authorization", $headers['Authorization']) }
-            [void](Invoke-DownloadFile -Url $directDownloadUrl -OutFile $tempFile)
+            $wc.DownloadFile($directDownloadUrl, $tempFile)
             $wc.Dispose()
             Write_LogEntry -Message "Temp-Download abgeschlossen: $($tempFile)" -Level "DEBUG"
         } catch {
@@ -343,15 +363,26 @@ Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: 
 #Install if needed
 if($InstallationFlag){
 	Write_LogEntry -Message "Starte externes Installationsskript mit -InstallationFlag" -Level "INFO"
-	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\WindowsDesktopRuntimesInstall.ps1" -PassInstallationFlag
+	& $PSHostPath `
+		-NoLogo -NoProfile -ExecutionPolicy Bypass `
+		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\WindowsDesktopRuntimesInstall.ps1" `
+		-InstallationFlag
 	Write_LogEntry -Message "Externer Aufruf abgeschlossen: WindowsDesktopRuntimesInstall.ps1 (mit -InstallationFlag)" -Level "DEBUG"
 } elseif($Install -eq $true){
 	Write_LogEntry -Message "Starte externes Installationsskript (Install=true)" -Level "INFO"
-	Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\WindowsDesktopRuntimesInstall.ps1"
+	& $PSHostPath `
+		-NoLogo -NoProfile -ExecutionPolicy Bypass `
+		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\WindowsDesktopRuntimesInstall.ps1"
 	Write_LogEntry -Message "Externer Aufruf abgeschlossen: WindowsDesktopRuntimesInstall.ps1" -Level "DEBUG"
 }
 
 Write-Host ""
 Write_LogEntry -Message "Script-Ende erreicht" -Level "INFO"
 
-Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
+# === Logger-Footer: automatisch eingefügt ===
+if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
+    Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
+} else {
+    Write_LogEntry -Message "$ProgramName - Script beendet" -Level "INFO"
+}
+# === Ende Logger-Footer ===
