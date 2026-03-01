@@ -153,7 +153,7 @@ Write-Host ""
 # Install if needed
 if ($InstallationFlag) {
     Write_LogEntry -Message "Starte externes Installationsskript aufgrund InstallationFlag" -Level "INFO"
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$NetworkShareDaten\Prog\InstallationScripts\Installation\WireGuardInstall.ps1" -PassInstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$NetworkShareDaten\Prog\InstallationScripts\Installation\WireGuardInstall.ps1" -InstallationFlag
     Write_LogEntry -Message "Externer Aufruf abgeschlossen: WireGuardInstall.ps1 mit -InstallationFlag" -Level "DEBUG"
 } elseif ($Install -eq $true) {
     Write_LogEntry -Message "Starte externes Installationsskript aufgrund Install=true" -Level "INFO"

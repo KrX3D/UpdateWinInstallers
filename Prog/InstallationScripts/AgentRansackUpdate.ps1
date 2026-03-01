@@ -139,7 +139,7 @@ Write-Host ""
 
 # ── Install if needed ─────────────────────────────────────────────────────────
 if ($InstallationFlag) {
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -InstallationFlag | Out-Null
 } elseif ($Install) {
     Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
 }

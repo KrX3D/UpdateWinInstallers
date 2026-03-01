@@ -217,7 +217,7 @@ Write-Host ""
 
 # ── Install if needed ──────────────────────────────────────────────────────────
 if ($InstallationFlag) {
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -InstallationFlag | Out-Null
 }
 if ($InstallVirtBox) {
     & $PSHostPath -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installScript -InstallVirtBox

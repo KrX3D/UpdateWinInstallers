@@ -335,7 +335,7 @@ Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: 
 # Install if needed
 if ($InstallationFlag) {
     Write_LogEntry -Message "InstallationFlag gesetzt. Starte Installationsskript mit Flag." -Level "INFO"
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$NetworkShareDaten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" -PassInstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath "$NetworkShareDaten\Prog\InstallationScripts\Installation\jDownload2Install.ps1" -InstallationFlag
     Write_LogEntry -Message "Installationsskript mit Flag aufgerufen." -Level "DEBUG"
 } elseif ($Install -eq $true) {
     Write_LogEntry -Message "Starte Installationsskript (Update) ohne Flag." -Level "INFO"

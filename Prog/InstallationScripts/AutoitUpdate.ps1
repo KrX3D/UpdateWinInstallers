@@ -202,7 +202,7 @@ Write-Host ""
 
 # ── Install if needed ─────────────────────────────────────────────────────────
 if ($InstallationFlag) {
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -InstallationFlag
 }
 
 if ($AutoItInstall) {

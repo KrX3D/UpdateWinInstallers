@@ -113,7 +113,7 @@ Write-Host ""
 if ($InstallationFlag) {
     Invoke-InstallerScript -PSHostPath $PSHostPath `
         -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AdvancedPortScannerInstallation.ps1" `
-        -PassInstallationFlag | Out-Null
+        -InstallationFlag | Out-Null
 } elseif ($Install) {
     Invoke-InstallerScript -PSHostPath $PSHostPath `
         -ScriptPath "$Serverip\Daten\Prog\InstallationScripts\Installation\AdvancedPortScannerInstallation.ps1" | Out-Null
