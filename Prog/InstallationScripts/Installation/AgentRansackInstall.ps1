@@ -1,5 +1,5 @@
-﻿param(
-    [switch]$InstallationFlag #wird nur bei $true genutzt, um zB conifg dateien zu kopiere. Damit Konig Dateien NUR bei einer Installation und NICHT bei einem Update kopiert werden.
+param(
+    [switch]$InstallationFlag #wird nur bei $true genutzt, um zB config dateien zu kopieren. Damit Konfig Dateien NUR bei einer Installation und NICHT bei einem Update kopiert werden.
 )
 
 $ProgramName = "Agent Ransack"
@@ -12,131 +12,165 @@ Import-Module -Name $dtPath -Force -ErrorAction Stop
 
 Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $parentPath
 
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName gesetzt: $($ProgramName); ScriptType gesetzt: $($ScriptType)" -Level "DEBUG"
+Write-DeployLog -Message "Script gestartet mit InstallationFlag: $InstallationFlag" -Level 'INFO'
 
-$config = Get-DeployConfigOrExit -ScriptRoot $parentPath -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$config             = Get-DeployConfigOrExit -ScriptRoot $parentPath -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
 $InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
 
-#Bei Update wird ohne deinstallation die neue Version richtig installiert
+$agentRansackExe    = "C:\Program Files\Mythicsoft\Agent Ransack\AgentRansack.exe"
+$startMenuFolder    = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Agent Ransack"
+$configPath         = "$env:APPDATA\Mythicsoft\AgentRansack\config\config_v9.xml"
 
-$localFileWildcard = "agentransack_x64_*.msi"
-Write_LogEntry -Message "Suche Installationsdatei mit Wildcard: $($localFileWildcard) im Ordner: $($InstallationFolder)" -Level "DEBUG"
+# ── Find installer (MSI preferred, EXE fallback) ───────────────────────────────
+# Filename pattern: agentransack*.msi / agentransack*.exe (no _x64_ required)
+$msiFilter = "agentransack*.msi"
+$exeFilter = "agentransack*.exe"
 
-$installFilePath = Get-ChildItem -Path $InstallationFolder -Filter $localFileWildcard | Select-Object -First 1 -ExpandProperty FullName -ErrorAction SilentlyContinue
+Write-DeployLog -Message "Suche MSI: $InstallationFolder\$msiFilter" -Level 'DEBUG'
+$installerFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter $msiFilter
+$installerType = 'MSI'
 
-if ($installFilePath) {
-    Write_LogEntry -Message "Gefundene Installationsdatei: $($installFilePath)" -Level "INFO"
-    Write-Host "Agent Ransack Pro wird installiert" -foregroundcolor "magenta"
-    Write_LogEntry -Message "Starte MSI-Installer: $($installFilePath) mit Argumenten: /qn /norestart" -Level "INFO"
-    [void](Invoke-InstallerFile -FilePath $installFilePath -Arguments "/qn", "/norestart" -Wait)
-    Write_LogEntry -Message "Installer-Aufruf beendet für: $($installFilePath)" -Level "SUCCESS"
+if ($installerFile) {
+    Write-DeployLog -Message "MSI gefunden: $($installerFile.FullName)" -Level 'DEBUG'
 } else {
-    Write_LogEntry -Message "Keine Installationsdatei gefunden für Muster $($localFileWildcard) in $($InstallationFolder)" -Level "WARNING"
+    Write-DeployLog -Message "Kein MSI gefunden – suche EXE: $InstallationFolder\$exeFilter" -Level 'DEBUG'
+    $installerFile = Get-InstallerFilePath -Directory $InstallationFolder -Filter $exeFilter
+    $installerType = 'EXE'
+
+    if ($installerFile) {
+        Write-DeployLog -Message "EXE gefunden: $($installerFile.FullName)" -Level 'DEBUG'
+    } else {
+        Write-DeployLog -Message "Kein EXE gefunden." -Level 'DEBUG'
+    }
 }
 
-#$exeToReplace = "$Serverip\Daten\Prog\AgentRansackPro\crack\AgentRansack.exe"
-#if (Test-Path $exeToReplace) {
-    #Write-Host "Agent Ransack exe wird getauscht"
-    #Copy-Item $exeToReplace "C:\Program Files\Mythicsoft\Agent Ransack" -Force
-#}
-
-#$langFileToReplace = "$Serverip\Daten\Prog\AgentRansackPro\crack\lang-en.xml"
-#if (Test-Path $langFileToReplace) {
-    #Write-Host "Agent Ransack Sprachdatei wird getauscht"
-    #Copy-Item $langFileToReplace "C:\Program Files\Mythicsoft\Agent Ransack\config" -Force
-#}
-
-$shortcutFolder = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Agent Ransack"
-Write_LogEntry -Message "Prüfe Startmenu-Ordner: $($shortcutFolder)" -Level "DEBUG"
-if (Test-Path $shortcutFolder) {
-    Write_LogEntry -Message "Startmenüeintrag gefunden und wird entfernt: $($shortcutFolder)" -Level "INFO"
-    Write-Host "	Startmenüeintrag wird entfernt." -foregroundcolor "Cyan"
-    Remove-Item -Path $shortcutFolder -Recurse -Force
-    Write_LogEntry -Message "Startmenüeintrag entfernt: $($shortcutFolder)" -Level "SUCCESS"
-} else {
-    Write_LogEntry -Message "Kein Startmenüeintrag gefunden bei: $($shortcutFolder)" -Level "DEBUG"
+if (-not $installerFile) {
+    $msg = "Keine Installationsdatei (MSI oder EXE) gefunden in: $InstallationFolder (MSI-Filter: $msiFilter, EXE-Filter: $exeFilter)"
+    Write-DeployLog -Message $msg -Level 'ERROR'
+    Write-Host ""
+    Write-Host $msg -ForegroundColor Red
+    Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet (Fehler: kein Installer)"
+    exit 1
 }
 
-# Define the path to the Agent Ransack executable
-$agentRansackPath = "C:\Program Files\Mythicsoft\Agent Ransack\AgentRansack.exe"
-Write_LogEntry -Message "Prüfe Agent Ransack Pfad: $($agentRansackPath)" -Level "DEBUG"
+Write-DeployLog -Message "Gefundene Installationsdatei [$installerType]: $($installerFile.FullName)" -Level 'INFO'
 
-# Check if the executable exists
-if (Test-Path $agentRansackPath) {
-    Write_LogEntry -Message "Agent Ransack ausführbar gefunden: $($agentRansackPath) - Starte Anwendung." -Level "INFO"
+# ── Install ────────────────────────────────────────────────────────────────────
+Write-Host "$ProgramName wird installiert" -ForegroundColor Magenta
+Write-DeployLog -Message "Starte Installation: $($installerFile.FullName)" -Level 'INFO'
 
-    # Start Agent Ransack and capture the process ID
-    $process = Start-Process -FilePath $agentRansackPath -PassThru
-    Write_LogEntry -Message "Agent Ransack Prozess gestartet: Name=$($process.ProcessName), Id=$($process.Id)" -Level "DEBUG"
+$installOk = $false
+try {
+    if ($installerType -eq 'MSI') {
+        # MSI: call msiexec directly so silent args are passed correctly
+        $proc = Start-Process -FilePath "msiexec.exe" `
+            -ArgumentList "/i", "`"$($installerFile.FullName)`"", "/qn", "/norestart" `
+            -Wait -PassThru -ErrorAction Stop
+        $installOk = ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010)
+        Write-DeployLog -Message "msiexec beendet mit ExitCode: $($proc.ExitCode)" -Level $(if ($installOk) { 'SUCCESS' } else { 'WARNING' })
+    } else {
+        # EXE: try common silent flags
+        $proc = Start-Process -FilePath $installerFile.FullName `
+            -ArgumentList "/VERYSILENT", "/NORESTART", "/SP-" `
+            -Wait -PassThru -ErrorAction Stop
+        $installOk = ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010)
+        Write-DeployLog -Message "EXE-Installer beendet mit ExitCode: $($proc.ExitCode)" -Level $(if ($installOk) { 'SUCCESS' } else { 'WARNING' })
+    }
+} catch {
+    Write-DeployLog -Message "Fehler beim Starten des Installers: $_" -Level 'ERROR'
+}
 
-    # Wait for the license window to appear
+if (-not $installOk) {
+    $msg = "Installation fehlgeschlagen (ExitCode: $($proc?.ExitCode)). Abbruch."
+    Write-DeployLog -Message $msg -Level 'ERROR'
+    Write-Host ""
+    Write-Host $msg -ForegroundColor Red
+    Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet (Installationsfehler)"
+    exit 1
+}
+
+Write-DeployLog -Message "Installation abgeschlossen: $($installerFile.FullName)" -Level 'SUCCESS'
+
+# ── Start menu cleanup ─────────────────────────────────────────────────────────
+Write-DeployLog -Message "Prüfe Startmenü-Ordner: $startMenuFolder" -Level 'DEBUG'
+if (Test-Path $startMenuFolder) {
+    Write-Host "    Startmenüeintrag wird entfernt." -ForegroundColor Cyan
+    Remove-StartMenuEntries -Paths @($startMenuFolder) -EmitHostMessages
+} else {
+    Write-DeployLog -Message "Kein Startmenüeintrag gefunden." -Level 'DEBUG'
+}
+
+# ── First-run / license dialog handling ───────────────────────────────────────
+#
+#   InstallationFlag = $true  → fresh install: launch app, dismiss license dialog,
+#                               then kill it so we can patch the config cleanly.
+#   InstallationFlag = $false → update path: just close any running instance quietly.
+#
+Write-DeployLog -Message "Prüfe Agent Ransack Pfad: $agentRansackExe" -Level 'DEBUG'
+
+if (-not (Test-Path $agentRansackExe)) {
+    $msg = "Agent Ransack EXE nicht gefunden nach Installation: $agentRansackExe"
+    Write-DeployLog -Message $msg -Level 'ERROR'
+    Write-Host $msg -ForegroundColor Red
+    Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet (EXE nicht gefunden)"
+    exit 1
+}
+
+if ($InstallationFlag) {
+    # Fresh install: launch and dismiss the first-run license dialog via SendKeys
+    Write-DeployLog -Message "InstallationFlag gesetzt – starte App zum Dismissal des Lizenz-Dialogs." -Level 'INFO'
+
+    $process = Start-Process -FilePath $agentRansackExe -PassThru
+    Write-DeployLog -Message "Prozess gestartet: Name=$($process.ProcessName), Id=$($process.Id)" -Level 'DEBUG'
+
     Start-Sleep -Seconds 2
-    Write_LogEntry -Message "Warte kurz auf UI-Elemente nach Start (2s)." -Level "DEBUG"
 
-    # Load the necessary Windows Forms assembly
     Add-Type -AssemblyName "System.Windows.Forms"
-    Write_LogEntry -Message "System.Windows.Forms Assembly geladen." -Level "DEBUG"
-
-    # Simulate pressing the Down Arrow key twice, followed by Enter
     [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-    Write_LogEntry -Message "SendKeys: {ENTER} gesendet." -Level "DEBUG"
-    
-    # Wait for the license window to appear
+    Write-DeployLog -Message "SendKeys: {ENTER}" -Level 'DEBUG'
+
     Start-Sleep -Seconds 2
-    Write_LogEntry -Message "Warte erneut (2s) nach erstem SendWait." -Level "DEBUG"
-    
-    # Simulate pressing the Down Arrow key twice, followed by Enter
     [System.Windows.Forms.SendKeys]::SendWait("{DOWN}{DOWN}{ENTER}")
-    Write_LogEntry -Message "SendKeys: {DOWN}{DOWN}{ENTER} gesendet." -Level "DEBUG"
+    Write-DeployLog -Message "SendKeys: {DOWN}{DOWN}{ENTER}" -Level 'DEBUG'
 
-    # Wait for Agent Ransack to fully open
     Start-Sleep -Seconds 3
-    Write_LogEntry -Message "Warte auf vollständiges Laden der Anwendung (3s)." -Level "DEBUG"
 
-    # Schließe Agent Ransack durch Beenden des Prozesses mit der PID
-    Write_LogEntry -Message "Beende Agent Ransack Prozess mit Id: $($process.Id)" -Level "INFO"
-    Stop-Process -Id $process.Id
-    Write_LogEntry -Message "Stop-Process aufgerufen für Id: $($process.Id)" -Level "DEBUG"
-
-    # Close Agent Ransack by sending Alt+F4
-    #[System.Windows.Forms.SendKeys]::SendWait("%{F4}")
-    
-    # Wait for the process to exit
+    Write-DeployLog -Message "Beende Prozess Id: $($process.Id)" -Level 'INFO'
+    Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
     $process.WaitForExit()
-    Write_LogEntry -Message "Agent Ransack Prozess wurde beendet und exit geprüft: Id $($process.Id)" -Level "SUCCESS"
+    Write-DeployLog -Message "Prozess beendet." -Level 'SUCCESS'
+
 } else {
-    Write_LogEntry -Message "Die ausführbare Datei Agent Ransack wurde nicht unter $($agentRansackPath) gefunden" -Level "ERROR"
-    Write-Host "Die ausführbare Datei Agent Ransack wurde nicht unter $agentRansackPath gefunden" -ForegroundColor Red
+    # Update path: silently close any running instance so config can be written
+    $running = Get-Process -Name "AgentRansack" -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-DeployLog -Message "Laufende AgentRansack-Instanz gefunden (Id: $($running.Id)) – wird geschlossen." -Level 'INFO'
+        $running | Stop-Process -Force -ErrorAction SilentlyContinue
+        Write-DeployLog -Message "AgentRansack geschlossen." -Level 'DEBUG'
+    } else {
+        Write-DeployLog -Message "Keine laufende AgentRansack-Instanz gefunden." -Level 'DEBUG'
+    }
 }
 
-#Change Theme to Silver:
-# Set the path dynamically based on the current user
-$configPath = "$env:APPDATA\Mythicsoft\AgentRansack\config\config_v9.xml"
-Write_LogEntry -Message "Prüfe Theme-Config Pfad: $($configPath)" -Level "DEBUG"
-
+# ── Patch theme config to Silver (n=5) ────────────────────────────────────────
 Write-Host ""
-# Check if the file exists
+Write-DeployLog -Message "Prüfe Theme-Config: $configPath" -Level 'DEBUG'
+
 if (Test-Path $configPath) {
-    Write_LogEntry -Message "Theme-Config gefunden: $($configPath) - Lese Datei ein." -Level "INFO"
-    # Read the file content
-    $xml = Get-Content -Path $configPath -Raw
-    Write_LogEntry -Message "Theme-Config eingelesen, Länge: $($xml.Length) Zeichen" -Level "DEBUG"
-
-    # Replace the UITheme value using regex
-    $xml = $xml -replace '<UITheme n="\d+"/>', '<UITheme n="5"/>'
-    Write_LogEntry -Message "UITheme Wert ersetzt in geladenem XML-String." -Level "DEBUG"
-
-    # Save the modified content back to the file
-    $xml | Set-Content -Path $configPath -Encoding UTF8
-    Write_LogEntry -Message "Theme-Config gespeichert: $($configPath)" -Level "SUCCESS"
-
-    Write-Host "	Die Datei wurde erfolgreich aktualisiert: $configPath" -foregroundcolor "Cyan"
+    try {
+        $xml = Get-Content -Path $configPath -Raw -ErrorAction Stop
+        $xml = $xml -replace '<UITheme n="\d+"/>', '<UITheme n="5"/>'
+        $xml | Set-Content -Path $configPath -Encoding UTF8 -ErrorAction Stop
+        Write-Host "    Theme auf Silver gesetzt: $configPath" -ForegroundColor Cyan
+        Write-DeployLog -Message "UITheme auf n=5 (Silver) gesetzt: $configPath" -Level 'SUCCESS'
+    } catch {
+        Write-DeployLog -Message "Fehler beim Patchen der Theme-Config: $_" -Level 'WARNING'
+    }
 } else {
-    Write_LogEntry -Message "Theme-Config Datei nicht gefunden: $($configPath)" -Level "WARNING"
-    Write-Host "	Die Datei wurde nicht gefunden: $configPath" -foregroundcolor "Red"
+    Write-DeployLog -Message "Theme-Config nicht gefunden (noch nicht erzeugt?): $configPath" -Level 'WARNING'
+    Write-Host "    Theme-Config nicht gefunden: $configPath" -ForegroundColor Yellow
 }
 
 #& $PSHostPath `
@@ -144,4 +178,5 @@ if (Test-Path $configPath) {
 #	-File "$Serverip\Daten\Customize_Windows\Scripte\RegistryImport.ps1" `
 #	-Path "$Serverip\Daten\Customize_Windows\Reg\Kontextmenu\AgentRansack.reg"
 
+Write-Host ""
 Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
