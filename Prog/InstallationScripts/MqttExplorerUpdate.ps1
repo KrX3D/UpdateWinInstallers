@@ -5,362 +5,193 @@ param(
 $ProgramName = "MQTT Explorer"
 $ScriptType  = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
-
-if (Test-Path $modulePath) {
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
-
-    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
-        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
-    }
-    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
-
-    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
-        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
-    }
-}
-# === Ende Logger-Header ===
-
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
-
-# DeployToolkit helpers
 $dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
-} else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
+Import-Module $dtPath -Force -ErrorAction Stop
+
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
+
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
+$GitHubToken        = $config.GitHubToken
+
+$localFileFilter = "MQTT-Explorer*.exe"
+$installScript   = "$Serverip\Daten\Prog\InstallationScripts\Installation\MqttExplorerInstallation.ps1"
+$includeBeta     = $true   # set $false to only track stable releases
+
+# ── Helper: parse version string including optional beta suffix ───────────────
+function Get-MqttVersionParts ([string]$Raw) {
+    $clean = ($Raw -replace '^[vV]', '').Trim()
+    # handle "-beta.6", "-beta6", etc.
+    $beta = if ($clean -match '-beta\.?(\d+)') { [int]$Matches[1] } else { $null }
+    $ver  = $clean -replace '-beta\.?\d+', '' -replace '-.*$', ''
+    # Store cleaned display string (no leading 'v', proper beta format)
+    $display = if ($beta) { "$ver-beta.$beta" } else { $ver }
+    return @{ Version = $ver; Beta = $beta; Raw = $display }
 }
 
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
-
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-    Write_LogEntry -Message "Konfigurationsdatei geladen: $($configPath)" -Level "INFO"
-} else {
-    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    exit 1
-}
-
-# GitHub repo info
-$GitHubUser = "thomasnordquist"
-$GitHubRepo = "MQTT-Explorer"
-Write_LogEntry -Message "GitHubUser: $($GitHubUser); GitHubRepo: $($GitHubRepo)" -Level "DEBUG"
-
-# local installer pattern and detection
-$installerFilter = "MQTT-Explorer*.exe"
-Write_LogEntry -Message "Suche lokale Installer mit Filter: $($installerFilter) in $($InstallationFolder)" -Level "DEBUG"
-
-$FoundFile = Get-ChildItem -Path $InstallationFolder -Filter $installerFilter -ErrorAction SilentlyContinue |
-             Sort-Object LastWriteTime -Descending |
-             Select-Object -First 1
-
-if ($FoundFile) {
-    Write_LogEntry -Message "Gefundene lokale Datei: $($FoundFile.FullName)" -Level "DEBUG"
-    $InstallationFileName = $FoundFile.Name
-    $localInstaller = $FoundFile.FullName
-} else {
-    Write_LogEntry -Message "Keine lokale Datei gefunden mit Pattern: $($installerFilter) in $($InstallationFolder)" -Level "WARNING"
-    $InstallationFileName = $null
-    $localInstaller = $null
-}
-
-# helper: normalize version string (remove leading v, -beta etc.)
-function Normalize-VersionString {
-    param([string]$v)
-    if (-not $v) { return $null }
-    # Remove leading 'v' or 'V'
-    $v = $v -replace '^[vV]', ''
-    # replace -beta or _beta with .
-    $v = $v -replace '-beta.*$', ''
-    $v = $v -replace '_beta.*$', ''
-    # Trim whitespace
-    $v = $v.Trim()
-    return $v
-}
-
-# helper: try convert to [version]
-function Try-ConvertToVersion {
-    param([string]$v)
-    if (-not $v) { return $null }
-    $vNorm = Normalize-VersionString -v $v
+function Compare-MqttVersions ([hashtable]$a, [hashtable]$b) {
+    # Returns $true if $a > $b
     try {
-        return [version]$vNorm
-    } catch {
-        # attempt to keep only numeric/dots
-        $num = ($vNorm -replace '[^0-9\.]', '')
-        if ($num) {
-            try { return [version]$num } catch { return $null }
-        }
-        return $null
-    }
+        $vA = [version]$a.Version
+        $vB = [version]$b.Version
+        if ($vA -gt $vB) { return $true }
+        if ($vA -lt $vB) { return $false }
+        # same base version: final > any beta
+        if (-not $a.Beta -and $b.Beta) { return $true }   # a is final, b is beta
+        if ($a.Beta -and -not $b.Beta) { return $false }  # a is beta, b is final
+        if ($a.Beta -and $b.Beta) { return [int]$a.Beta -gt [int]$b.Beta }
+        return $false
+    } catch { return $false }
 }
 
-# Get local version from installer file (if exists)
-function Get-LocalInstallerVersion {
-    param([string]$path)
-    if (-not $path) { return $null }
-    if (-not (Test-Path -Path $path)) { return $null }
-    try {
-        $vi = (Get-Item $path).VersionInfo
-        $ver = $vi.ProductVersion
-        if (-not $ver) { $ver = $vi.FileVersion }
-        $ver = Normalize-VersionString -v $ver
-        Write_LogEntry -Message "Lokale Installer-Version aus $path : $($ver)" -Level "DEBUG"
-        return $ver
-    } catch {
-        Write_LogEntry -Message "Fehler beim Lesen der Version aus $path : $($_.Exception.Message)" -Level "WARNING"
-        return $null
-    }
+# ── Local version ─────────────────────────────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localParts   = @{ Version = '0.0.0'; Beta = $null; Raw = '0.0.0' }
+
+if ($localFile) {
+    $vi  = $localFile.VersionInfo
+    $raw = if ($vi.ProductVersion) { $vi.ProductVersion } else { $vi.FileVersion }
+    $localParts = Get-MqttVersionParts -Raw ($raw -replace '^[vV]', '').Trim()
+    Write-DeployLog -Message "Lokale Datei: $($localFile.Name) | Version: $($localParts.Raw)" -Level 'DEBUG'
+} else {
+    Write-DeployLog -Message "Keine lokale Installationsdatei gefunden." -Level 'WARNING'
 }
 
-# Get installed version from registry (if installed)
-function Get-InstalledVersionFromRegistry {
-    $RegistryPaths = @(
-        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
-        'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-    )
-    foreach ($RegPath in $RegistryPaths) {
-        if (Test-Path $RegPath) {
-            try {
-                $items = Get-ChildItem $RegPath -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue
-                foreach ($it in $items) {
-                    if ($it.DisplayName -and $it.DisplayName -like "$ProgramName*") {
-                        $dv = $it.DisplayVersion
-                        if ($dv) {
-                            return (Normalize-VersionString -v $dv)
-                        }
-                    }
+# ── Online version via GitHub ─────────────────────────────────────────────────
+$apiHeaders = @{
+    'User-Agent' = 'InstallationScripts/1.0'
+    'Accept'     = 'application/vnd.github.v3+json'
+}
+if ($GitHubToken) { $apiHeaders['Authorization'] = "token $GitHubToken" }
+
+$chosenRelease = $null
+$onlineParts   = $null
+
+try {
+    if ($includeBeta) {
+        # Fetch all releases, find the one with the highest version
+        $releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/thomasnordquist/MQTT-Explorer/releases' -Headers $apiHeaders -ErrorAction Stop
+        if ($releases -is [array] -and $releases.Count -gt 0) {
+            $best = $null
+            $bestParts = $null
+            foreach ($rel in ($releases | Where-Object { -not $_.draft })) {
+                $parts = Get-MqttVersionParts -Raw $rel.tag_name
+                if (-not $best -or (Compare-MqttVersions -a $parts -b $bestParts)) {
+                    $best = $rel
+                    $bestParts = $parts
                 }
-            } catch {
-                # continue
             }
+            $chosenRelease = $best
+            $onlineParts   = $bestParts
         }
-    }
-    return $null
-}
-
-# prepare GitHub API headers
-$apiUrl = "https://api.github.com/repos/$GitHubUser/$GitHubRepo/releases/latest"
-$apiHeaders = @{ 'User-Agent' = 'InstallationScripts/1.0'; 'Accept' = 'application/vnd.github.v3+json' }
-if ($GithubToken) {
-    $apiHeaders['Authorization'] = "token $GithubToken"
-    Write_LogEntry -Message "GithubToken übergeben - wird für API-Requests verwendet." -Level "DEBUG"
-}
-
-# function: fetch latest release (with error handling)
-function Get-LatestRelease {
-    param([string]$url, [hashtable]$headers)
-    try {
-        Write_LogEntry -Message "Rufe GitHub Releases API ab: $url" -Level "DEBUG"
-        $lr = Invoke-RestMethod -Uri $url -Headers $headers -ErrorAction Stop
-        return $lr
-    } catch {
-        Write_LogEntry -Message "Fehler beim Abrufen der GitHub Releases API: $($_.Exception.Message)" -Level "ERROR"
-        return $null
-    }
-}
-
-# function: choose best asset (prefer Setup .exe, avoid zips/portable)
-function Choose-BestAsset {
-    param($assets)
-    if (-not $assets) { return $null }
-
-    # Candidate ordering: Setup installer executables, then any exe not archive
-    # Avoid names containing 'portable' or '.zip', '.tar', '.gz'
-    $exeAssets = $assets | Where-Object { $_.name -match '\.exe$' -and ($_.name -notmatch '(?i)(portable|zip|tar|\.7z|\.gz)') }
-
-    # prefer those with 'setup' or 'Setup' or 'Installer' in name
-    $preferred = $exeAssets | Where-Object { $_.name -match '(?i)(setup|installer)' } | Sort-Object { $_.name.Length } | Select-Object -First 1
-    if ($preferred) { return $preferred }
-
-    # fallback: exe that contains 'MQTT' or 'MQTT-Explorer'
-    $preferred2 = $exeAssets | Where-Object { $_.name -match '(?i)mqtt' } | Sort-Object { $_.name.Length } | Select-Object -First 1
-    if ($preferred2) { return $preferred2 }
-
-    # final fallback: any exe
-    $fallback = $exeAssets | Select-Object -First 1
-    if ($fallback) { return $fallback }
-
-    return $null
-}
-
-# MAIN CHECK & UPDATE
-function CheckAndUpdateMQTTExplorer {
-    Write_LogEntry -Message "CheckAndUpdateMQTTExplorer gestartet." -Level "INFO"
-
-    $localVersion = Get-LocalInstallerVersion -path $localInstaller
-    if (-not $localVersion) {
-        Write_LogEntry -Message "Keine lokale Installer-Version gefunden; setze lokal auf null." -Level "DEBUG"
-    }
-
-    # fetch release
-    $latestRelease = Get-LatestRelease -url $apiUrl -headers $apiHeaders
-    if (-not $latestRelease) {
-        Write_LogEntry -Message "Keine Release-Informationen verfügbar; Abbruch Update-Check." -Level "ERROR"
-        return
-    }
-
-    # get online version
-    $onlineTag = $latestRelease.tag_name
-    $onlineVersion = Normalize-VersionString -v $onlineTag
-    Write_LogEntry -Message "Online release tag: $($onlineTag); normalized: $($onlineVersion)" -Level "DEBUG"
-
-    Write-Host ""
-    Write-Host "Lokale Version: $localVersion" -foregroundcolor "Cyan"
-    Write-Host "Online Version: $onlineVersion" -foregroundcolor "Cyan"
-    Write-Host ""
-
-    # compare using [version] if possible
-    $needUpdate = $false
-    try {
-        $vLocal = Try-ConvertToVersion -v $localVersion
-        $vOnline = Try-ConvertToVersion -v $onlineVersion
-        if ($vOnline -and $vLocal) {
-            if ($vOnline -gt $vLocal) { $needUpdate = $true }
-        } elseif ($vOnline -and -not $vLocal) {
-            # no local version -> update needed
-            $needUpdate = $true
-        } else {
-            # fallback to string comparison
-            if ($onlineVersion -ne $localVersion) { $needUpdate = $true }
-        }
-    } catch {
-        Write_LogEntry -Message "Fehler beim Vergleichen der Versionen: $($_.Exception.Message)" -Level "WARNING"
-        if ($onlineVersion -ne $localVersion) { $needUpdate = $true }
-    }
-
-    if (-not $needUpdate) {
-        Write_LogEntry -Message "Kein Update nötig (Online: $onlineVersion; Lokal: $localVersion)." -Level "INFO"
-        Write-Host "Kein Online Update verfügbar. $ProgramName is aktuell." -foregroundcolor "DarkGray"
-        return
-    }
-
-    Write_LogEntry -Message "Update erforderlich: Online $onlineVersion > Lokal $localVersion" -Level "INFO"
-
-    # Choose best installer asset
-    $chosenAsset = Choose-BestAsset -assets $latestRelease.assets
-    if (-not $chosenAsset) {
-        Write_LogEntry -Message "Kein geeignetes Asset gefunden im Release." -Level "ERROR"
-        return
-    }
-
-    $setupUrl = $chosenAsset.browser_download_url
-    $setupName = $chosenAsset.name
-    Write_LogEntry -Message "Gewähltes Asset: $setupName -> $setupUrl" -Level "DEBUG"
-
-    # prepare download path
-    $downloadPath = Join-Path -Path $InstallationFolder -ChildPath $setupName
-    Write_LogEntry -Message "DownloadPath: $downloadPath" -Level "DEBUG"
-
-    # download (use WebClient and set auth if provided)
-    $wc = New-Object System.Net.WebClient
-    try {
-        $wc.Headers.Add("User-Agent", "InstallationScripts/1.0")
-        if ($GithubToken) { $wc.Headers.Add("Authorization", "token $GithubToken") }
-
-        Write_LogEntry -Message "Starte Download: $setupUrl -> $downloadPath" -Level "INFO"
-        $wc.DownloadFile($setupUrl, $downloadPath)
-        Write_LogEntry -Message "Download abgeschlossen: $downloadPath" -Level "SUCCESS"
-    } catch {
-        Write_LogEntry -Message "Fehler beim Herunterladen $setupUrl : $($_.Exception.Message)" -Level "ERROR"
-        return
-    } finally {
-        if ($wc) { $wc.Dispose() }
-    }
-
-    # Post-download: remove old installer (if exists) and replace variables
-    if (Test-Path -Path $downloadPath) {
-        try {
-            if ($localInstaller -and (Test-Path -Path $localInstaller)) {
-                Remove-Item -Path $localInstaller -Force -ErrorAction Stop
-                Write_LogEntry -Message "Alte Installationsdatei entfernt: $localInstaller" -Level "DEBUG"
-            }
-        } catch {
-            Write_LogEntry -Message "Fehler beim Entfernen der alten Datei $localInstaller : $($_.Exception.Message)" -Level "WARNING"
-        }
-
-        # update localInstaller variable for later
-        $localInstaller = $downloadPath
-        $InstallationFileName = Split-Path -Path $downloadPath -Leaf
-
-        Write-Host "$ProgramName wurde aktualisiert auf $onlineVersion" -foregroundcolor "Green"
-        Write_LogEntry -Message "$ProgramName Update erfolgreich: $downloadPath" -Level "SUCCESS"
     } else {
-        Write_LogEntry -Message "Download-Datei wurde nicht gefunden nach dem Download: $downloadPath" -Level "ERROR"
+        $release     = Invoke-RestMethod -Uri 'https://api.github.com/repos/thomasnordquist/MQTT-Explorer/releases/latest' -Headers $apiHeaders -ErrorAction Stop
+        $chosenRelease = $release
+        $onlineParts   = Get-MqttVersionParts -Raw $release.tag_name
     }
+    if ($onlineParts) {
+        Write-DeployLog -Message "Online-Version: $($onlineParts.Raw)" -Level 'INFO'
+    }
+} catch {
+    Write-DeployLog -Message "Fehler beim Abrufen der GitHub API: $_" -Level 'ERROR'
 }
-
-# run the check/update
-Write_LogEntry -Message "Aufruf CheckAndUpdateMQTTExplorer" -Level "INFO"
-CheckAndUpdateMQTTExplorer
-Write_LogEntry -Message "Rückkehr nach CheckAndUpdateMQTTExplorer()" -Level "DEBUG"
 
 Write-Host ""
+Write-Host "Lokale Version: $($localParts.Raw)"  -ForegroundColor Cyan
+Write-Host "Online Version: $(if($onlineParts){ $onlineParts.Raw }else{'(unbekannt)'})" -ForegroundColor Cyan
+Write-Host ""
 
-# Re-evaluate local installer & version for install decision
-if ($localInstaller -and (Test-Path -Path $localInstaller)) {
-    $localVersion = Get-LocalInstallerVersion -path $localInstaller
-    Write_LogEntry -Message "Ermittelte lokale Version erneut: $($localVersion)" -Level "DEBUG"
-} else {
-    Write_LogEntry -Message "Kein lokaler Installer gefunden nach Update-Versuch." -Level "DEBUG"
-    $localVersion = $null
-}
+# ── Download if newer ─────────────────────────────────────────────────────────
+if ($onlineParts -and $chosenRelease -and (Compare-MqttVersions -a $onlineParts -b $localParts)) {
+    Write-DeployLog -Message "Neue Version verfügbar. Starte Download." -Level 'INFO'
 
-# Get installed version from registry
-$installedVersion = Get-InstalledVersionFromRegistry
-Write_LogEntry -Message "Gefundene installierte Version (Registry): $($installedVersion)" -Level "DEBUG"
+    $asset = $chosenRelease.assets |
+        Where-Object { $_.name -match '\.exe$' -and $_.name -notmatch '(?i)(portable|zip|tar|\.7z|\.gz)' -and $_.name -match '(?i)(setup|installer|mqtt)' } |
+        Select-Object -First 1
+    if (-not $asset) {
+        $asset = $chosenRelease.assets | Where-Object { $_.name -match '\.exe$' } | Select-Object -First 1
+    }
 
-# decide whether to install
-$Install = $false
-if ($installedVersion -and $localVersion) {
-    try {
-        if ([version](Try-ConvertToVersion -v $installedVersion) -lt [version](Try-ConvertToVersion -v $localVersion)) {
-            $Install = $true
+    if ($asset) {
+        $fileName     = $asset.name
+        $downloadPath = Join-Path $InstallationFolder $fileName
+        $tempPath     = "$downloadPath.part"
+
+        $ok = Invoke-DownloadFile -Url $asset.browser_download_url -OutFile $tempPath
+        if ($ok -and (Test-Path $tempPath)) {
+            try {
+                Move-Item -Path $tempPath -Destination $downloadPath -Force -ErrorAction Stop
+                if ($localFile -and (Test-Path $localFile.FullName) -and $localFile.FullName -ne $downloadPath) {
+                    Remove-PathSafe -Path $localFile.FullName | Out-Null
+                }
+                Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
+                Write-DeployLog -Message "$ProgramName aktualisiert: $downloadPath" -Level 'SUCCESS'
+                $localFile = Get-Item $downloadPath -ErrorAction SilentlyContinue
+            } catch {
+                Write-DeployLog -Message "Fehler beim Finalisieren: $($_.Exception.Message)" -Level 'ERROR'
+                Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+            }
+        } else {
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+            Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+            Write-DeployLog -Message "Download fehlgeschlagen." -Level 'ERROR'
         }
-    } catch {
-        if ($installedVersion -ne $localVersion) { $Install = $true }
+    } else {
+        Write-DeployLog -Message "Kein passendes Asset gefunden." -Level 'WARNING'
     }
-} elseif (-not $installedVersion -and $localVersion) {
-    # not installed but installer exists => install when flag or desired
-    $Install = $false
-}
-
-Write_LogEntry -Message "Installationsentscheidung: Install = $($Install); InstallationFlag = $($InstallationFlag)" -Level "DEBUG"
-
-# Install if needed / if flag set
-if ($InstallationFlag) {
-    Write_LogEntry -Message "InstallationFlag gesetzt: Starte externes Installations-Skript mit -InstallationFlag" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\MqttExplorerInstallation.ps1" `
-        -InstallationFlag
-    Write_LogEntry -Message "Externes Installations-Skript mit -InstallationFlag aufgerufen." -Level "DEBUG"
-} elseif ($Install) {
-    Write_LogEntry -Message "Starte externes Installations-Skript (Update)" -Level "INFO"
-    & $PSHostPath `
-        -NoLogo -NoProfile -ExecutionPolicy Bypass `
-        -File "$Serverip\Daten\Prog\InstallationScripts\Installation\MqttExplorerInstallation.ps1"
-    Write_LogEntry -Message "Externes Installations-Skript aufgerufen (Update)." -Level "DEBUG"
+} elseif ($onlineParts) {
+    Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
+    Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
 }
 
 Write-Host ""
-Write_LogEntry -Message "Script-Ende erreicht." -Level "INFO"
 
-# === Logger-Footer: automatisch eingefügt ===
-if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
-    Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
-} else {
-    Write_LogEntry -Message "$ProgramName - Script beendet" -Level "INFO"
+# ── Re-evaluate local file ────────────────────────────────────────────────────
+$localFile  = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localParts = @{ Version = '0.0.0'; Beta = $null; Raw = '0.0.0' }
+if ($localFile) {
+    $vi  = $localFile.VersionInfo
+    $raw = if ($vi.ProductVersion) { $vi.ProductVersion } else { $vi.FileVersion }
+    $localParts = Get-MqttVersionParts -Raw ($raw -replace '^[vV]', '').Trim()
 }
-# === Ende Logger-Footer ===
+
+# ── Installed vs. local ───────────────────────────────────────────────────────
+$installedInfo    = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
+$installedVersion = if ($installedInfo) { $installedInfo.VersionRaw } else { $null }
+$Install          = $false
+
+if ($installedVersion) {
+    $instParts = Get-MqttVersionParts -Raw $installedVersion
+
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $($instParts.Raw)"  -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $($localParts.Raw)" -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $($instParts.Raw) | Lokal: $($localParts.Raw)" -Level 'INFO'
+
+    $Install = Compare-MqttVersions -a $localParts -b $instParts
+    if ($Install) {
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
+    } else {
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
+    }
+} else {
+    Write-Host "$ProgramName ist nicht installiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'INFO'
+}
+
+Write-Host ""
+
+# ── Install if needed ─────────────────────────────────────────────────────────
+if ($InstallationFlag) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -InstallationFlag | Out-Null
+} elseif ($Install) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
+}
+
+Write-Host ""
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

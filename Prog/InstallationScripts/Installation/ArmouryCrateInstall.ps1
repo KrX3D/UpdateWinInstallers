@@ -1,4 +1,4 @@
-﻿# ASUS Armoury Crate Update Checker and Installer
+﻿﻿# ASUS Armoury Crate Update Checker and Installer
 # This script checks if ASUS Armoury Crate is installed, compares with available version 
 # on NAS, and installs newer version if available
 
@@ -6,31 +6,20 @@ param (
     [switch]$InstallationFlag = $false
 )
 
-# DeployToolkit helpers
-$dtPath = Join-Path (Split-Path $PSScriptRoot -Parent) "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
-} else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
-}
-
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-} else {
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    pause
-    exit
-}
-
 $ProgramName = "Armoury Crate"
+$ScriptType  = "Install"
+$parentPath  = Split-Path -Path $PSScriptRoot -Parent
+
+$dtPath = Join-Path $parentPath "Modules\DeployToolkit\DeployToolkit.psm1"
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit nicht gefunden: $dtPath" }
+Import-Module -Name $dtPath -Force -ErrorAction Stop
+
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $parentPath
+
+$config = Get-DeployConfigOrExit -ScriptRoot $parentPath -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 # Define NAS path where Armoury Crate installers are stored
 $InstallationFolder = Join-Path $NetworkShareDaten "Treiber\AMD_PC"
@@ -221,3 +210,5 @@ if ($null -ne $latestVersionInfo) {
 } else {
     Write-Host "Unable to determine latest available version. Please check your NAS connection." -ForegroundColor Red
 }
+
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

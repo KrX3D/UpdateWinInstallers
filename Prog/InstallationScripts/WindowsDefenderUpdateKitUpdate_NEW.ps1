@@ -1,51 +1,19 @@
 ﻿$ProgramName = "Windows Defender Update Kit"
 $ScriptType  = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
+$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
+Import-Module $dtPath -Force -ErrorAction Stop
 
-if (Test-Path $modulePath) {
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
-
-    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
-        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
-    }
-    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
-
-    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
-        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
-    }
-}
-# === Ende Logger-Header ===
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
 
-# DeployToolkit helpers
-$dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
-} else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
-}
-
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
-
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-    Write_LogEntry -Message "Konfigurationsdatei geladen: $($configPath)" -Level "INFO"
-} else {
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
-    exit 1
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 # Constants
 $webPageUrl = "https://support.microsoft.com/en-us/topic/microsoft-defender-update-for-windows-operating-system-installation-images-1c89630b-61ff-00a1-04e2-2d1f3865450d"
@@ -376,10 +344,4 @@ finally {
     Write_LogEntry -Message "Aufräumen abgeschlossen: $($extractPath)" -Level "DEBUG"
 }
 
-# === Logger-Footer: automatisch eingefügt ===
-if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
-    Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
-} else {
-    Write_LogEntry -Message "$ProgramName - Script beendet" -Level "INFO"
-}
-# === Ende Logger-Footer ===
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
