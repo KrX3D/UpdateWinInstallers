@@ -34,13 +34,14 @@ if ($localFile) {
 
 # Online version via GitHub (list releases, filter to stable main releases only)
 $githubInfo   = Get-GitHubLatestRelease -Repo "WinMerge/winmerge" -Token $GitHubToken `
-    -AssetFilter { $_ -match 'x64' -and $_ -notmatch 'ARM64|PerUser' }
+    -AssetFilter { $_.name -match 'x64-Setup\.exe$' -and $_.name -notmatch 'ARM64|PerUser' } `
+    -VersionRegex '(\d+\.\d+\.\d+(?:\.\d+)?)'
 $onlineVersion = if ($githubInfo) { $githubInfo.Version } else { $null }
-$downloadUrl   = if ($githubInfo) { $githubInfo.AssetUrl } else { $null }
+$downloadUrl   = if ($githubInfo) { $githubInfo.DownloadUrl } else { $null }
 
 # Asset selection fallback (broader criteria if strict match missed)
 if ($githubInfo -and -not $downloadUrl) {
-    $downloadUrl = $githubInfo.AssetUrl
+    $downloadUrl = $githubInfo.DownloadUrl
 }
 
 Write-Host ""
@@ -123,7 +124,7 @@ Write-Host ""
 
 # Install if needed
 if ($InstallationFlag) {
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -InstallationFlag | Out-Null
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
 } elseif ($Install) {
     Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
 }
