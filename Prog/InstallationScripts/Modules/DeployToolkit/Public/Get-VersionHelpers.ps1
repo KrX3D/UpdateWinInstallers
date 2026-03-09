@@ -24,6 +24,14 @@ function Convert-AdobeToVersion {
   if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
   $v = $Value.Trim()
 
+  if ($v -match '^20(\d{2})\.(\d{3})\.(\d{5})$') {
+    return [version]"$([int]$Matches[1]).$([int]$Matches[2]).$([int]$Matches[3])"
+  }
+
+  if ($v -match '^20(\d{2})(\d{3})(\d{5})$') {
+    return [version]"$([int]$Matches[1]).$([int]$Matches[2]).$([int]$Matches[3])"
+  }
+
   if ($v -match '^\d{8,10}$') {
     if ($v.Length -eq 10) {
       $major = [int]$v.Substring(0,2)
@@ -53,7 +61,8 @@ function Convert-AdobeVersionToDigits {
   param([version]$Version)
 
   if (-not $Version) { return $null }
-  $major = "{0:D2}" -f $Version.Major
+  $majorValue = if ($Version.Major -ge 2000) { $Version.Major % 100 } else { $Version.Major }
+  $major = "{0:D2}" -f $majorValue
   $minor = "{0:D3}" -f $Version.Minor
   $build = "{0:D5}" -f $Version.Build
   return "$major$minor$build"

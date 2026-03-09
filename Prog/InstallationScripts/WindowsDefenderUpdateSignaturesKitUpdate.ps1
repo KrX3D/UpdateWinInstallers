@@ -1,26 +1,16 @@
-# DeployToolkit helpers
+﻿﻿$ProgramName = "Security intelligence Update Kit"
+$ScriptType  = "Update"
+
 $dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
-} else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
-}
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
+Import-Module $dtPath -Force -ErrorAction Stop
 
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
 
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-} else {
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    pause
-    exit
-}
+$config = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip = $config.Serverip
+$PSHostPath = $config.PSHostPath
 
 # Dot-source the Functions.ps1 script
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
@@ -57,8 +47,6 @@ $directory = "$NetworkShareDaten\Customize_Windows\Windows_Defender_Update_Iso\d
 $cabFilePath = "$directory\defender-dism-x64.cab"
 $xmlFileName = "package-defender.xml"
 $extractPath = "$env:TEMP\defender"
-
-$ProgramName = "Security intelligence Update Kit"
 
 # Create the extraction directory if it doesn't exist
 if (-not (Test-Path -Path $extractPath)) {
@@ -138,7 +126,7 @@ if (Test-Path $xmlFilePath) {
             $tempFilePath = Join-Path $env:TEMP "mpam-fe.exe"
             #Invoke-WebRequest -Uri $downloadLink -OutFile $tempFilePath
 			$webClient = New-Object System.Net.WebClient
-			$webClient.DownloadFile($downloadLink, $tempFilePath)
+			[void](Invoke-DownloadFile -Url $downloadLink -OutFile $tempFilePath)
 			$webClient.Dispose()
 
 			#Write-Host "Extracting $tempFilePath using 7-Zip"
@@ -201,7 +189,7 @@ if (Test-Path $xmlFilePath) {
 							$downloadPath = Join-Path -Path $tempPath -ChildPath ($updateLink.Split("/")[-1])
 
 							# Download the file to the desktop
-							Invoke-WebRequest -Uri $updateLink -OutFile $downloadPath
+							[void](Invoke-DownloadFile -Url $updateLink -OutFile $downloadPath)
 						} else {
 							Write-Host "Update link 'updateplatform.amd64fre' wurde nicht gefunden." -foregroundcolor "Red"
 						}
@@ -362,6 +350,8 @@ else {
 
 # Clean up the extracted files
 Remove-Item -Path $extractPath -Force -Recurse
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
+
 # SIG # Begin signature block
 # MIIc9gYJKoZIhvcNAQcCoIIc5zCCHOMCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
