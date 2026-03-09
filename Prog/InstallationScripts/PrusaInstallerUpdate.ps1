@@ -65,35 +65,62 @@ if ($onlineVersion) {
         try {
             $html = (Invoke-WebRequest -Uri 'https://help.prusa3d.com/downloads' -UseBasicParsing -ErrorAction Stop).Content
 
-            # Extract platform/file_url pairs from inline JSON data
-            $pattern = '\\"platform\\":\\"(win|standalone)\\",\\"show_linux_info\\":true,\\"file_url\\":\\"(https://[^"]+)\\"'
-            $matches2 = [regex]::Matches($html, $pattern)
+            # Normalize escaped JSON fragments and extract platform/file_url tuples.
+            $normalized = $html -replace '\\/', '/' -replace '\\"', '"'
+            $pattern = '"platform":"(win|standalone)".*?"file_url":"(https://[^"]+)"'
+            $matches2 = [regex]::Matches($normalized, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
 
-            $bestVersion = $null
+            $winVersions = @{}
+            $standaloneVersions = @{}
+
             foreach ($match in $matches2) {
                 $platform = $match.Groups[1].Value
                 $link     = $match.Groups[2].Value -replace '(\.exe.*)$', '.exe'
                 $lLower   = $link.ToLower()
 
-                # Skip non-exe and firmware/archives
+                # Skip non-exe/archives/firmware and old snapshots.
                 if ($lLower -notmatch '\.exe$' -or $lLower -match 'firmware|\.zip$|\.tar|\.gz$') { continue }
-                # Only accept PrusaSlicer standalone Windows exe
+                if ($lLower -like '*old*') { continue }
                 if ($lLower -notmatch 'prusaslicer_win') { continue }
 
                 $vm = [regex]::Match($link, '(\d+\.\d+\.\d+|\d+_\d+_\d+)')
                 if (-not $vm.Success) { continue }
                 $ver = $vm.Groups[1].Value -replace '_', '.'
 
-                # Ensure download URL matches the version we already detected from GitHub.
-                if ($onlineVersion -and $ver -ne $onlineVersion) {
-                    Write-DeployLog -Message "Überspringe URL mit abweichender Version: $ver (erwartet: $onlineVersion)" -Level 'DEBUG'
-                    continue
+                if ($platform -eq 'win') {
+                    $winVersions[$ver] = $link
+                } elseif ($platform -eq 'standalone') {
+                    $standaloneVersions[$ver] = $link
                 }
+            }
 
-                if (-not $bestVersion -or ([version]$ver -gt [version]$bestVersion)) {
-                    $bestVersion = $ver
-                    $downloadUrl = $link
+            $latestWinVersion = $winVersions.Keys | Sort-Object { [version]$_ } | Select-Object -Last 1
+            $latestStandaloneVersion = $standaloneVersions.Keys | Sort-Object { [version]$_ } | Select-Object -Last 1
+
+            if ($latestWinVersion -and $latestStandaloneVersion) {
+                if ([version]$latestWinVersion -eq [version]$latestStandaloneVersion) {
+                    # Prefer standalone when both are available with same version.
+                    $bestVersion = $latestStandaloneVersion
+                    $downloadUrl = $standaloneVersions[$latestStandaloneVersion]
+                } elseif ([version]$latestWinVersion -gt [version]$latestStandaloneVersion) {
+                    $bestVersion = $latestWinVersion
+                    $downloadUrl = $winVersions[$latestWinVersion]
+                } else {
+                    $bestVersion = $latestStandaloneVersion
+                    $downloadUrl = $standaloneVersions[$latestStandaloneVersion]
                 }
+            } elseif ($latestStandaloneVersion) {
+                $bestVersion = $latestStandaloneVersion
+                $downloadUrl = $standaloneVersions[$latestStandaloneVersion]
+            } elseif ($latestWinVersion) {
+                $bestVersion = $latestWinVersion
+                $downloadUrl = $winVersions[$latestWinVersion]
+            }
+
+            # GitHub decides if update exists; URL must match that version.
+            if ($downloadUrl -and $onlineVersion -and $bestVersion -ne $onlineVersion) {
+                Write-DeployLog -Message "Versionen stimmen nicht überein. Gewünscht: $onlineVersion, URL: $bestVersion" -Level 'WARNING'
+                $downloadUrl = $null
             }
 
             if ($downloadUrl) {
@@ -170,7 +197,7 @@ Write-Host ""
 
 # ── Install if needed ──────────────────────────────────────────────────────────
 if ($InstallationFlag) {
-    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -InstallationFlag | Out-Null
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
 } elseif ($Install) {
     Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
 }
