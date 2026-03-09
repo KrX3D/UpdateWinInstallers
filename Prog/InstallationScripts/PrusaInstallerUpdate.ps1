@@ -84,6 +84,12 @@ if ($onlineVersion) {
                 if (-not $vm.Success) { continue }
                 $ver = $vm.Groups[1].Value -replace '_', '.'
 
+                # Ensure download URL matches the version we already detected from GitHub.
+                if ($onlineVersion -and $ver -ne $onlineVersion) {
+                    Write-DeployLog -Message "Überspringe URL mit abweichender Version: $ver (erwartet: $onlineVersion)" -Level 'DEBUG'
+                    continue
+                }
+
                 if (-not $bestVersion -or ([version]$ver -gt [version]$bestVersion)) {
                     $bestVersion = $ver
                     $downloadUrl = $link
@@ -93,7 +99,7 @@ if ($onlineVersion) {
             if ($downloadUrl) {
                 Write-DeployLog -Message "Download-URL: $downloadUrl (Version: $bestVersion)" -Level 'INFO'
             } else {
-                Write-DeployLog -Message "Keine passende Download-URL gefunden." -Level 'WARNING'
+                Write-DeployLog -Message "Keine passende Download-URL für Online-Version $onlineVersion gefunden." -Level 'WARNING'
             }
         } catch {
             Write-DeployLog -Message "Fehler beim Abrufen der Download-Seite: $_" -Level 'ERROR'
