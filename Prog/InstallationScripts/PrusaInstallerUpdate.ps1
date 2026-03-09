@@ -5,445 +5,202 @@ param(
 $ProgramName = "PrusaSlicer"
 $ScriptType  = "Update"
 
-# === Logger-Header: automatisch eingefügt ===
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules\Logger\Logger.psm1"
-
-if (Test-Path $modulePath) {
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
-
-    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
-        $logRoot = Join-Path -Path $PSScriptRoot -ChildPath "Log"
-    }
-    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
-
-    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
-        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
-    }
-}
-# === Ende Logger-Header ===
-
-Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
-Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
-
-# DeployToolkit helpers
 $dtPath = Join-Path $PSScriptRoot "Modules\DeployToolkit\DeployToolkit.psm1"
-if (Test-Path $dtPath) {
-    Import-Module -Name $dtPath -Force -ErrorAction Stop
+if (-not (Test-Path $dtPath)) { throw "DeployToolkit fehlt: $dtPath" }
+Import-Module $dtPath -Force -ErrorAction Stop
+
+Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $PSScriptRoot
+
+$config             = Get-DeployConfigOrExit -ScriptRoot $PSScriptRoot -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
+$InstallationFolder = $config.InstallationFolder
+$Serverip           = $config.Serverip
+$PSHostPath         = $config.PSHostPath
+$GitHubToken        = $config.GitHubToken
+
+$InstallationFolder = Join-Path $InstallationFolder "3D"
+$localFileFilter    = "prusaslicer_*.exe"
+$installScript      = "$Serverip\Daten\Prog\InstallationScripts\Installation\PrusaInstallerInstallation.ps1"
+
+Write-DeployLog -Message "InstallationFolder: $InstallationFolder" -Level 'INFO'
+
+# ── Local version (from ProductVersion) ───────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localVersion = "0.0.0"
+
+if ($localFile) {
+    $rawPV = Get-InstallerFileVersion -FilePath $localFile.FullName -Source ProductVersion
+    if ($rawPV) { $localVersion = $rawPV }
+    Write-DeployLog -Message "Lokale Datei: $($localFile.Name) | Version: $localVersion" -Level 'DEBUG'
 } else {
-    if (Get-Command -Name Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "DeployToolkit nicht gefunden: $dtPath" -Level "WARNING"
-    } else {
-        Write-Warning "DeployToolkit nicht gefunden: $dtPath"
-    }
+    Write-DeployLog -Message "Keine lokale Installationsdatei gefunden." -Level 'WARNING'
 }
 
-# Import shared configuration
-$configPath = Join-Path -Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
-Write_LogEntry -Message "Berechneter Konfigurationspfad: $($configPath)" -Level "DEBUG"
+# ── Online version via GitHub ──────────────────────────────────────────────────
+$githubInfo = Get-GitHubLatestRelease `
+    -Repo         "prusa3d/PrusaSlicer" `
+    -Token        $GitHubToken `
+    -VersionRegex '(\d+\.\d+\.\d+)' `
+    -Context      $ProgramName
 
-if (Test-Path -Path $configPath) {
-    . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
-    Write_LogEntry -Message "Konfigurationsdatei geladen: $($configPath)" -Level "INFO"
-} else {
-    Write-Host ""
-    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
-    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
-    exit
+# GitHub tag is like "version_2.9.1" — clean it
+$onlineVersion = $null
+if ($githubInfo -and $githubInfo.Tag) {
+    $onlineVersion = ($githubInfo.Tag -replace '^version_', '') -replace '^[vV]', ''
 }
 
-$InstallationFolder = "$InstallationFolder\3D"
-Write_LogEntry -Message "InstallationFolder gesetzt: $($InstallationFolder)" -Level "DEBUG"
-$InstallationFileFile = "$InstallationFolder\prusaslicer_*.exe"
-Write_LogEntry -Message "Suchmuster für Installationsdateien: $($InstallationFileFile)" -Level "DEBUG"
+Write-Host ""
+Write-Host "Lokale Version: $localVersion"  -ForegroundColor Cyan
+Write-Host "Online Version: $onlineVersion" -ForegroundColor Cyan
+Write-Host ""
 
-$FoundFile = Get-ChildItem -Path $InstallationFileFile -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($FoundFile) {
-    $InstallationFileName = $FoundFile.Name
-    Write_LogEntry -Message "Lokale Installationsdatei gefunden: $($InstallationFileName)" -Level "DEBUG"
-} else {
-    Write_LogEntry -Message "Keine lokale Installationsdatei gefunden mit Muster: $($InstallationFileFile)" -Level "WARNING"
-}
+# ── Download if newer — scrape actual installer URL from help.prusa3d.com ─────
+if ($onlineVersion) {
+    $isNewer = $false
+    try { $isNewer = [version]$onlineVersion -gt [version]$localVersion } catch { $isNewer = $onlineVersion -ne $localVersion }
 
-$localInstaller = "$InstallationFolder\$InstallationFileName"
-try {
-    $localVersion = (Get-Item -LiteralPath $localInstaller -ErrorAction Stop).VersionInfo.ProductVersion
-    Write_LogEntry -Message "Lokale Installer-Version ermittelt: $($localVersion) aus Datei $($localInstaller)" -Level "DEBUG"
-} catch {
-    $localVersion = "0.0.0"
-    Write_LogEntry -Message "Fehler beim Ermitteln der lokalen Installer-Version für $($localInstaller): $($_)" -Level "WARNING"
-}
+    if ($isNewer) {
+        Write-DeployLog -Message "Neue Version: $onlineVersion. Suche Download-URL..." -Level 'INFO'
 
-# Define the GitHub API endpoint URL
-$apiUrl = "https://api.github.com/repos/prusa3d/PrusaSlicer/releases/latest"
-Write_LogEntry -Message "GitHub API URL: $($apiUrl)" -Level "DEBUG"
-
-# --- HttpWebRequest (fast, low-level) with headers and robust error handling ---
-# Ensure TLS 1.2
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-} catch {
-    # ignore if not supported; continue
-}
-
-$headers = @{
-    'User-Agent' = 'InstallationScripts/1.0'
-    'Accept'     = 'application/vnd.github.v3+json'
-}
-if ($GithubToken) {
-    $headers['Authorization'] = "token $GithubToken"
-    Write_LogEntry -Message "GitHub Token vorhanden - verwende authentifizierte Anfrage." -Level "DEBUG"
-}
-
-$release = $null
-try {
-    $request = [Net.WebRequest]::Create($apiUrl)
-    $request.Method = "GET"
-    $request.Timeout = 30000
-    $request.UserAgent = $headers['User-Agent']
-    $request.ContentType = "application/json"
-    #$request.Headers.Add("Accept", $headers['Accept'])
-	$request.Accept = $headers['Accept']  # Use property instead of Headers.Add()
-    if ($headers.ContainsKey('Authorization')) {
-        # Add Authorization header in a way that works with WebRequest
-        $request.Headers.Add("Authorization", $headers['Authorization'])
-    }
-	
-    Write_LogEntry -Message "Sende HttpWebRequest an GitHub API ($($apiUrl))" -Level "DEBUG"
-
-    try {
-        $response = $request.GetResponse()
-        $stream = $response.GetResponseStream()
-        $reader = [System.IO.StreamReader]::new($stream)
-        $body = $reader.ReadToEnd()
-        $reader.Close()
-        $stream.Close()
-        $response.Close()
-
-        # Convert JSON body to object
+        $downloadUrl = $null
         try {
-            $release = $body | ConvertFrom-Json -ErrorAction Stop
-            Write_LogEntry -Message "GitHub API Response empfangen; TagName: $($release.tag_name)" -Level "DEBUG"
-        } catch {
-            Write_LogEntry -Message "Fehler beim Parsen der GitHub-Antwort: $($_)" -Level "ERROR"
-            $release = $null
-        }
-    } catch [System.Net.WebException] {
-        $webEx = $_.Exception
-        $errMsg = $webEx.Message
-        # Try to read response body
-        try {
-            if ($webEx.Response -ne $null) {
-                $errStream = $webEx.Response.GetResponseStream()
-                $errReader = [System.IO.StreamReader]::new($errStream)
-                $errBody = $errReader.ReadToEnd()
-                $errReader.Close()
-                $errStream.Close()
-                # Try to parse JSON error message
-                try {
-                    $errJson = $errBody | ConvertFrom-Json -ErrorAction Stop
-                    if ($errJson.message) { $errMsg = $errJson.message }
-                } catch {
-                    # leave errMsg as-is or use raw body if helpful
-                    if ($errBody) { $errMsg = $errBody }
+            $html = (Invoke-WebRequest -Uri 'https://help.prusa3d.com/downloads' -UseBasicParsing -ErrorAction Stop).Content
+
+            # Normalize escaped JSON fragments and extract platform/file_url tuples.
+            $normalized = $html -replace '\\/', '/' -replace '\\"', '"'
+            $pattern = '"platform":"(win|standalone)".*?"file_url":"(https://[^"]+)"'
+            $matches2 = [regex]::Matches($normalized, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+
+            $winVersions = @{}
+            $standaloneVersions = @{}
+
+            foreach ($match in $matches2) {
+                $platform = $match.Groups[1].Value
+                $link     = $match.Groups[2].Value -replace '(\.exe.*)$', '.exe'
+                $lLower   = $link.ToLower()
+
+                # Skip non-exe/archives/firmware and old snapshots.
+                if ($lLower -notmatch '\.exe$' -or $lLower -match 'firmware|\.zip$|\.tar|\.gz$') { continue }
+                if ($lLower -like '*old*') { continue }
+                if ($lLower -notmatch 'prusaslicer_win') { continue }
+
+                $vm = [regex]::Match($link, '(\d+\.\d+\.\d+|\d+_\d+_\d+)')
+                if (-not $vm.Success) { continue }
+                $ver = $vm.Groups[1].Value -replace '_', '.'
+
+                if ($platform -eq 'win') {
+                    $winVersions[$ver] = $link
+                } elseif ($platform -eq 'standalone') {
+                    $standaloneVersions[$ver] = $link
                 }
             }
+
+            $latestWinVersion = $winVersions.Keys | Sort-Object { [version]$_ } | Select-Object -Last 1
+            $latestStandaloneVersion = $standaloneVersions.Keys | Sort-Object { [version]$_ } | Select-Object -Last 1
+
+            if ($latestWinVersion -and $latestStandaloneVersion) {
+                if ([version]$latestWinVersion -eq [version]$latestStandaloneVersion) {
+                    # Prefer standalone when both are available with same version.
+                    $bestVersion = $latestStandaloneVersion
+                    $downloadUrl = $standaloneVersions[$latestStandaloneVersion]
+                } elseif ([version]$latestWinVersion -gt [version]$latestStandaloneVersion) {
+                    $bestVersion = $latestWinVersion
+                    $downloadUrl = $winVersions[$latestWinVersion]
+                } else {
+                    $bestVersion = $latestStandaloneVersion
+                    $downloadUrl = $standaloneVersions[$latestStandaloneVersion]
+                }
+            } elseif ($latestStandaloneVersion) {
+                $bestVersion = $latestStandaloneVersion
+                $downloadUrl = $standaloneVersions[$latestStandaloneVersion]
+            } elseif ($latestWinVersion) {
+                $bestVersion = $latestWinVersion
+                $downloadUrl = $winVersions[$latestWinVersion]
+            }
+
+            # GitHub decides if update exists; URL must match that version.
+            if ($downloadUrl -and $onlineVersion -and $bestVersion -ne $onlineVersion) {
+                Write-DeployLog -Message "Versionen stimmen nicht überein. Gewünscht: $onlineVersion, URL: $bestVersion" -Level 'WARNING'
+                $downloadUrl = $null
+            }
+
+            if ($downloadUrl) {
+                Write-DeployLog -Message "Download-URL: $downloadUrl (Version: $bestVersion)" -Level 'INFO'
+            } else {
+                Write-DeployLog -Message "Keine passende Download-URL für Online-Version $onlineVersion gefunden." -Level 'WARNING'
+            }
         } catch {
-            # ignore read errors
+            Write-DeployLog -Message "Fehler beim Abrufen der Download-Seite: $_" -Level 'ERROR'
         }
 
-        if ($errMsg -and ($errMsg -match '(rate limit|rate_limit|rate limit exceeded|API rate limit|403)')) {
-            Write_LogEntry -Message "GitHub API Rate-Limit / Zugriff verweigert erkannt: $($errMsg)" -Level "WARNING"
-            Write_LogEntry -Message "Hinweis: Verwende ein GitHub-PAT (in PowerShellVariables.ps1 als \$GithubToken) oder env var to increase rate limits." -Level "DEBUG"
-        } else {
-            Write_LogEntry -Message "Fehler beim Abrufen der GitHub API: $($errMsg)" -Level "ERROR"
+        if ($downloadUrl) {
+            $newInstaller = Join-Path $InstallationFolder "prusaslicer_$onlineVersion.exe"
+            $tempPath     = "$newInstaller.part"
+
+            $ok = Invoke-DownloadFile -Url $downloadUrl -OutFile $tempPath
+            if ($ok -and (Test-Path $tempPath)) {
+                Move-Item -Path $tempPath -Destination $newInstaller -Force
+                if ($localFile -and (Test-Path $localFile.FullName) -and $localFile.FullName -ne $newInstaller) {
+                    Remove-PathSafe -Path $localFile.FullName | Out-Null
+                }
+                Write-Host "$ProgramName wurde aktualisiert.." -ForegroundColor Green
+                Write-DeployLog -Message "$ProgramName aktualisiert: $newInstaller" -Level 'SUCCESS'
+                $localFile = Get-Item $newInstaller -ErrorAction SilentlyContinue
+            } else {
+                Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+                Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
+                Write-DeployLog -Message "Download fehlgeschlagen." -Level 'ERROR'
+            }
         }
-
-        $release = $null
-    }
-} catch {
-    Write_LogEntry -Message "Unerwarteter Fehler beim Aufbau des WebRequest: $($_)" -Level "ERROR"
-    $release = $null
-}
-# --- end HttpWebRequest block ---
-
-# If API failed, avoid crashing by setting $newVersion = $localVersion (no update available)
-if (-not $release) {
-    $newVersion = $localVersion
-    Write_LogEntry -Message "Keine Online-Release-Information verfügbar; Online-Check übersprungen. Setze neue Version = lokale Version ($newVersion)" -Level "WARNING"
-} else {
-    # Parse release object as before
-    try {
-        $newVersion = $release.tag_name.TrimStart("version_")
-        Write_LogEntry -Message "Extrahierte Online-Version: $($newVersion); Lokale Version: $($localVersion)" -Level "INFO"
-    } catch {
-        $newVersion = $localVersion
-        Write_LogEntry -Message "Fehler beim Extrahieren der Online-Version; setze neue Version = lokale Version ($newVersion)" -Level "WARNING"
-    }
-}
-
-Write-Host ""
-Write-Host "Lokale Version: $localVersion" -foregroundcolor "Cyan"
-Write-Host "Online Version: $newVersion" -foregroundcolor "Cyan"
-Write-Host ""
-
-# initialize variable to avoid later undefined errors
-$win64DownloadUrl = $null
-
-if ([version]$newVersion -ne [version]$localVersion) {
-    $newInstaller = "$InstallationFolder\prusaslicer_$newVersion.exe"
-    Write_LogEntry -Message "Neue Version erkannt: $($newVersion). Neuer Installer-Pfad: $($newInstaller)" -Level "INFO"
-	
-	#Get Download Link
-	$onlineVersionUrl = "https://help.prusa3d.com/downloads"
-	Write_LogEntry -Message "Rufe Online-Version-Seite ab: $($onlineVersionUrl)" -Level "DEBUG"
-	try {
-		$onlineVersionHtml = Invoke-WebRequest -Uri $onlineVersionUrl -UseBasicParsing -ErrorAction Stop
-		Write_LogEntry -Message "Online-Downloads-Seite abgerufen" -Level "DEBUG"
-	} catch {
-		Write_LogEntry -Message "Fehler beim Abrufen der Online-Downloads-Seite $($onlineVersionUrl): $($_)" -Level "ERROR"
-		$onlineVersionHtml = $null
-	}
-
-	# Use the regex pattern to find download links for "win" and "standalone" (raw JSON-like snippets)
-	$pattern = '\\"platform\\":\\"(win|standalone)\\",\\"show_linux_info\\":true,\\"file_url\\":\\"(https://[^"]+)\\"'
-	$matchesPattern = @()
-	if ($onlineVersionHtml) {
-		$matchesPattern = [regex]::Matches($onlineVersionHtml.Content, $pattern)
-		Write_LogEntry -Message "Anzahl gefundener Download-Matches auf der Seite: $($matchesPattern.Count)" -Level "DEBUG"
-	} else {
-		Write_LogEntry -Message "Kein HTML-Inhalt zum Parsen vorhanden." -Level "WARNING"
-	}
-
-	if ($matchesPattern.Count -gt 0) {
-		$winVersions = @{}
-		$standaloneVersions = @{}
-
-		foreach ($match in $matchesPattern) {
-			$platform = $match.Groups[1].Value
-			$downloadLink = $match.Groups[2].Value
-
-			# Normalize for checks
-			$dlLower = $downloadLink.ToLower()
-
-			# Skip clearly irrelevant items: firmware, archives, or anything not an exe
-			if ($dlLower -match 'firmware' -or $dlLower -match '\.zip$' -or $dlLower -match '\.tar' -or $dlLower -match '\.gz$') {
-				Write_LogEntry -Message "Skip non-driver asset (firmware/archive): $($downloadLink)" -Level "DEBUG"
-				continue
-			}
-			# prefer only .exe files (after cleaning)
-			if (-not ($downloadLink -match '\.exe')) {
-				Write_LogEntry -Message "Skip non-exe asset: $($downloadLink)" -Level "DEBUG"
-				continue
-			}
-
-			# Normalize the link ending to .exe (like you had before)
-			$downloadLink = $downloadLink -replace '(\.exe.*)$', '.exe'
-
-			# Heuristic: only accept driver / prusaslicer installer links for Windows
-			# Accept if link path contains 'drivers' or filename contains typical windows installer markers
-			$isDriverLike = ($dlLower -match '/downloads/drivers/') -or ($dlLower -match 'prusa3d_win') -or ($dlLower -match 'prusaslicer_win') -or ($dlLower -match 'prusa3d_win_') -or ($dlLower -match 'prusaslicer_win_standalone')
-
-			# Platform-specific acceptance
-			if ($platform -eq "win") {
-				if (-not $isDriverLike) {
-					Write_LogEntry -Message "Ignored WIN asset not driver-like: $($downloadLink)" -Level "DEBUG"
-					continue
-				}
-			} elseif ($platform -eq "standalone") {
-				# Some standalone assets are explicit: accept those containing 'standalone' or 'PrusaSlicer_Win_standalone'
-				if (-not ($dlLower -match 'standalone' -or $dlLower -match 'prusaslicer_win_standalone')) {
-					Write_LogEntry -Message "Ignored STANDALONE asset not standalone-like: $($downloadLink)" -Level "DEBUG"
-					continue
-				}
-			}
-
-			# Extract the version number using a regular expression (keep both formats)
-			$versionMatch = [regex]::Match($downloadLink, '(\d+\.\d+\.\d+|\d+_\d+_\d+)')
-			if ($versionMatch.Success) {
-				$version = $versionMatch.Groups[1].Value -replace '_', '.'
-
-				# Store the version link in the appropriate platform's hash table
-				if ($platform -eq "win") {
-					$winVersions[$version] = $downloadLink
-					Write_LogEntry -Message "Win-Asset hinzugefügt: Version $($version); URL: $($downloadLink)" -Level "DEBUG"
-				} elseif ($platform -eq "standalone") {
-					$standaloneVersions[$version] = $downloadLink
-					Write_LogEntry -Message "Standalone-Asset hinzugefügt: Version $($version); URL: $($downloadLink)" -Level "DEBUG"
-				}
-			} else {
-				Write_LogEntry -Message "Version konnte nicht extrahiert aus Link, übersprungen: $($downloadLink)" -Level "DEBUG"
-			}
-		}
-
-		# Get the newest version links for "win" and "standalone" if they exist
-		$latestWinVersion = $null
-		$latestStandaloneVersion = $null
-		if ($winVersions.Keys.Count -gt 0) {
-			$latestWinVersion = $winVersions.Keys | Sort-Object { [Version] $_ } | Select-Object -Last 1
-		}
-		if ($standaloneVersions.Keys.Count -gt 0) {
-			$latestStandaloneVersion = $standaloneVersions.Keys | Sort-Object { [Version] $_ } | Select-Object -Last 1
-		}
-
-		Write_LogEntry -Message "Latest Win Version: $($latestWinVersion); Latest Standalone Version: $($latestStandaloneVersion)" -Level "DEBUG"
-
-		# Choose final download URL with preference rules
-		if ($latestWinVersion -and $latestStandaloneVersion) {
-			if ([version]$latestWinVersion -eq [version]$latestStandaloneVersion) {
-				$win64DownloadUrl = $standaloneVersions[$latestStandaloneVersion]
-				Write_LogEntry -Message "Beide Versionen gleich; wähle Standalone URL: $($win64DownloadUrl)" -Level "DEBUG"
-			} elseif ([version]$latestWinVersion -gt [version]$latestStandaloneVersion) {
-				$win64DownloadUrl = $winVersions[$latestWinVersion]
-				Write_LogEntry -Message "Wähle Win URL: $($win64DownloadUrl)" -Level "DEBUG"
-			} else {
-				$win64DownloadUrl = $standaloneVersions[$latestStandaloneVersion]
-				Write_LogEntry -Message "Wähle Standalone URL: $($win64DownloadUrl)" -Level "DEBUG"
-			}
-		} elseif ($latestWinVersion) {
-			$win64DownloadUrl = $winVersions[$latestWinVersion]
-			Write_LogEntry -Message "Nur Win-Asset gefunden; wähle Win URL: $($win64DownloadUrl)" -Level "DEBUG"
-		} elseif ($latestStandaloneVersion) {
-			$win64DownloadUrl = $standaloneVersions[$latestStandaloneVersion]
-			Write_LogEntry -Message "Nur Standalone-Asset gefunden; wähle Standalone URL: $($win64DownloadUrl)" -Level "DEBUG"
-		} else {
-			Write_LogEntry -Message "Keine passende Download-URL für Win/Standalone gefunden (nach Filter)." -Level "WARNING"
-			$win64DownloadUrl = $null
-		}
-	} 
-
-	# Compare if the download link is the same version as the newest Version from GIT
-	if ($win64DownloadUrl) {
-		# Extract the version number from the URL and convert underscores to periods
-		$urlVersionMatch = [regex]::Match($win64DownloadUrl, '(\d+\.\d+\.\d+|\d+_\d+_\d+)')
-		if ($urlVersionMatch.Success) {
-			$urlVersion = $urlVersionMatch.Groups[1].Value -replace '_', '.'
-			Write_LogEntry -Message "Version extrahiert aus Download-URL: $($urlVersion); Erwartete Online-Version: $($newVersion)" -Level "DEBUG"
-
-			# Compare the extracted version with the desired version
-			if ($newVersion -eq $urlVersion) {
-				Write_LogEntry -Message "Versions-Check erfolgreich: $($newVersion) == $($urlVersion). Starte Download..." -Level "INFO"
-				
-				$webClient = New-Object System.Net.WebClient
-	            try {
-				    $webClient.DownloadFile($win64DownloadUrl, $newInstaller)
-	                Write_LogEntry -Message "Download beendet: $($newInstaller)" -Level "DEBUG"
-	            } catch {
-	                Write_LogEntry -Message "Fehler beim Herunterladen von $($win64DownloadUrl): $($_)" -Level "ERROR"
-	            } finally {
-	                $webClient.Dispose()
-	            }
-				
-				# Check if the file was completely downloaded
-				if (Test-Path $newInstaller) {
-					# Remove the old installer
-					try {
-						Remove-Item -Path $localInstaller -Force
-						Write_LogEntry -Message "Alte Installer-Datei entfernt: $($localInstaller)" -Level "DEBUG"
-					} catch {
-						Write_LogEntry -Message "Fehler beim Entfernen der alten Installer-Datei $($localInstaller): $($_)" -Level "WARNING"
-					}
-
-					Write-Host "$ProgramName wurde aktualisiert.." -foregroundcolor "green"
-	                Write_LogEntry -Message "$($ProgramName) Update erfolgreich: $($newInstaller)" -Level "SUCCESS"
-				} else {
-					Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktuallisiert." -foregroundcolor "red"
-	                Write_LogEntry -Message "Download fehlgeschlagen; Datei nicht gefunden: $($newInstaller)" -Level "ERROR"
-				}    
-			} else {
-				Write-Host "Versionen stimmen nicht überein. Gewünscht: $newVersion, URL: $urlVersion" -foregroundcolor "red"
-	            Write_LogEntry -Message "Versionskonflikt: Gewünscht $($newVersion), URL-Version $($urlVersion)" -Level "WARNING"
-			}
-		} else {
-			Write_LogEntry -Message "Version konnte nicht aus der Download-URL extrahiert werden: $($win64DownloadUrl)" -Level "WARNING"
-		}
-	} else {
-		Write_LogEntry -Message "Kein geeigneter Download-URL gefunden; überspringe Download." -Level "WARNING"
-	}
-} else {
-	Write-Host "Kein Online Update verfügbar. $ProgramName is aktuell." -foregroundcolor "DarkGray"
-    Write_LogEntry -Message "Kein Online Update verfügbar: Online $($newVersion) == Lokal $($localVersion)" -Level "INFO"
-}
-
-Write-Host ""
-
-#Check Installed Version / Install if neded
-$FoundFile = Get-ChildItem -Path $InstallationFileFile -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($FoundFile) {
-    $InstallationFileName = $FoundFile.Name
-    $localInstaller = "$InstallationFolder\$InstallationFileName"
-    try {
-        $localVersion = (Get-Item -LiteralPath $localInstaller -ErrorAction Stop).VersionInfo.ProductVersion
-        Write_LogEntry -Message "Erneut lokale Installationsdatei ermittelt: $($localInstaller); Version: $($localVersion)" -Level "DEBUG"
-    } catch {
-        $localVersion = "0.0.0"
-        Write_LogEntry -Message "Fehler beim Ermitteln der Version der Datei $($localInstaller): $($_)" -Level "WARNING"
-    }
-} else {
-    Write_LogEntry -Message "Keine lokale Installationsdatei beim erneutem Check gefunden." -Level "WARNING"
-}
-
-#$Path  = Get-ChildItem 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -like $ProgramName + '*' }
-
-$RegistryPaths = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-Write_LogEntry -Message "Registrypfade zur Suche: $($RegistryPaths -join '; ')" -Level "DEBUG"
-
-$Path = foreach ($RegPath in $RegistryPaths) {
-    if (Test-Path $RegPath) {
-        Get-ChildItem $RegPath | Get-ItemProperty | Where-Object { $_.DisplayName -like "$ProgramName*" }
-    }
-}
-
-if ($null -ne $Path) {
-    $installedVersion = $Path.DisplayVersion | Select-Object -First 1
-    Write-Host "$ProgramName ist installiert." -foregroundcolor "green"
-    Write-Host "	Installierte Version:       $installedVersion" -foregroundcolor "Cyan"
-    Write-Host "	Installationsdatei Version: $localVersion" -foregroundcolor "Cyan"
-    Write_LogEntry -Message "$($ProgramName) in Registry gefunden; InstallierteVersion: $($installedVersion); InstallationsdateiVersion: $($localVersion)" -Level "INFO"
-	
-    if ([version]$installedVersion -lt [version]$localVersion) {
-        Write-Host "		Veraltete $ProgramName ist installiert. Update wird gestartet." -foregroundcolor "magenta"
-		$Install = $true
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (Update erforderlich)" -Level "INFO"
-    } elseif ([version]$installedVersion -eq [version]$localVersion) {
-        Write-Host "		Installierte Version ist aktuell." -foregroundcolor "DarkGray"
-		$Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (Version aktuell)" -Level "DEBUG"
     } else {
-        #Write-Host "$ProgramName is installed, and the installed version ($installedVersion) is higher than the local version ($localVersion)."
-		$Install = $false
-        Write_LogEntry -Message "Installationsentscheidung: Install = $($Install) (installierte Version neuer)" -Level "WARNING"
+        Write-Host "Kein Online Update verfügbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
     }
 } else {
-    #Write-Host "$ProgramName is not installed on this system."
-	$Install = $false
-    Write_LogEntry -Message "$($ProgramName) nicht in Registry gefunden (nicht installiert)." -Level "INFO"
+    Write-DeployLog -Message "Online-Version konnte nicht ermittelt werden." -Level 'WARNING'
 }
-Write-Host ""
-Write_LogEntry -Message "Installationsprüfung abgeschlossen. Install variable: $($Install)" -Level "DEBUG"
 
-#Install if needed
-if($InstallationFlag){
-    Write_LogEntry -Message "InstallationFlag gesetzt. Starte Installationsskript mit Flag: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrusaInstallerInstallation.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\PrusaInstallerInstallation.ps1" `
-		-InstallationFlag
-    Write_LogEntry -Message "Installationsskript mit Flag aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrusaInstallerInstallation.ps1" -Level "DEBUG"
-} elseif($Install -eq $true){
-    Write_LogEntry -Message "Starte Installationsskript (Update) ohne Flag: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrusaInstallerInstallation.ps1" -Level "INFO"
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Prog\InstallationScripts\Installation\PrusaInstallerInstallation.ps1"
-    Write_LogEntry -Message "Installationsskript aufgerufen: $($Serverip)\Daten\Prog\InstallationScripts\Installation\PrusaInstallerInstallation.ps1" -Level "DEBUG"
+Write-Host ""
+
+# ── Re-evaluate local file ─────────────────────────────────────────────────────
+$localFile    = Get-InstallerFilePath -Directory $InstallationFolder -Filter $localFileFilter
+$localVersion = "0.0.0"
+if ($localFile) {
+    $rawPV = Get-InstallerFileVersion -FilePath $localFile.FullName -Source ProductVersion
+    if ($rawPV) { $localVersion = $rawPV }
 }
-Write-Host ""
-Write_LogEntry -Message "Script-Ende erreicht." -Level "INFO"
 
-# === Logger-Footer: automatisch eingefügt ===
-if (Get-Command -Name Finalize_LogSession -ErrorAction SilentlyContinue) {
-    Finalize_LogSession -FinalizeMessage "$ProgramName - Script beendet"
+# ── Installed vs. local ────────────────────────────────────────────────────────
+$installedInfo    = Get-RegistryVersion -DisplayNameLike "$ProgramName*"
+$installedVersion = if ($installedInfo) { $installedInfo.VersionRaw } else { $null }
+$Install          = $false
+
+if ($installedVersion) {
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $installedVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $localVersion"     -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $installedVersion | Lokal: $localVersion" -Level 'INFO'
+
+    try { $Install = [version]$installedVersion -lt [version]$localVersion } catch { $Install = $false }
+    if ($Install) {
+        Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+        Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
+    } else {
+        Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+        Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
+    }
 } else {
-    Write_LogEntry -Message "$ProgramName - Script beendet" -Level "INFO"
+    Write-Host "$ProgramName ist nicht installiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'INFO'
 }
-# === Ende Logger-Footer ===
 
+Write-Host ""
+
+# ── Install if needed ──────────────────────────────────────────────────────────
+if ($InstallationFlag) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript -PassInstallationFlag | Out-Null
+} elseif ($Install) {
+    Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $installScript | Out-Null
+}
+
+Write-Host ""
+Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"

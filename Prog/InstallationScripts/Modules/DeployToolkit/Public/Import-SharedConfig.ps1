@@ -13,5 +13,6 @@
     InstallationFolder = $InstallationFolder
     Serverip           = $Serverip
     PSHostPath         = $PSHostPath
+    NetworkShareDaten  = $NetworkShareDaten
   }
 }
