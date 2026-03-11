@@ -42,15 +42,54 @@ if ($webpageContent) {
     $decodedHtml = [System.Net.WebUtility]::HtmlDecode($webpageContent)
     $decodedUri  = [System.Uri]::UnescapeDataString($webpageContent)
     $decodedBoth = [System.Uri]::UnescapeDataString($decodedHtml)
-    $searchBlobs = @($webpageContent, $decodedHtml, $decodedUri, $decodedBoth)
+    $regexUnescaped = [regex]::Unescape($webpageContent)
+    $searchBlobs = @($webpageContent, $decodedHtml, $decodedUri, $decodedBoth, $regexUnescaped)
 
-    $zipPattern = 'WinReducer_EX_Series_x64_(\d+(?:\.\d+){1,3})\.zip'
+    # Wix/plugin pages may keep file listings behind secondary JSON endpoints.
+    $extraDataUrls = @(
+        "$downloadPageUrl?format=json",
+        "$downloadPageUrl?ajax=true",
+        "$downloadPageUrl?view=ajax",
+        "$downloadPageUrl/index.json",
+        "$downloadPageUrl/data.json",
+        "$downloadPageUrl/files.json"
+    )
+    foreach ($extraUrl in $extraDataUrls) {
+        try {
+            $extraContent = (Invoke-WebRequest -Uri $extraUrl -UseBasicParsing -ErrorAction Stop).Content
+            if ($extraContent) {
+                $searchBlobs += $extraContent
+                $searchBlobs += [System.Net.WebUtility]::HtmlDecode($extraContent)
+                $searchBlobs += [System.Uri]::UnescapeDataString($extraContent)
+                $searchBlobs += [regex]::Unescape($extraContent)
+                Write-DeployLog -Message "Zusatzdaten geladen: $extraUrl" -Level 'DEBUG'
+            }
+        } catch {}
+    }
+
+    $zipPattern = 'WinReducer_EX_Series_x64_(\d+(?:\\?\.\d+){1,3})\\?\.zip'
     $allVersions = @()
     foreach ($blob in $searchBlobs) {
         $versionMatches = [regex]::Matches($blob, $zipPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
         foreach ($match in $versionMatches) {
-            $v = $match.Groups[1].Value
+            $v = $match.Groups[1].Value -replace '\\.', '.'
             try { $allVersions += [pscustomobject]@{ Text = $v; Parsed = [version]$v } } catch {}
+        }
+
+        # Fallback for encoded/escaped filename forms (e.g. %5F, \u005f, \\.)
+        $normalizedBlob = $blob
+        $normalizedBlob = $normalizedBlob -replace '(?i)%5f', '_'
+        $normalizedBlob = $normalizedBlob -replace '(?i)\\u005f', '_'
+        $normalizedBlob = $normalizedBlob -replace '\\.', '.'
+        $normalizedBlob = $normalizedBlob -replace '\\/', '/'
+
+        $tokenMatches = [regex]::Matches($normalizedBlob, 'WinReducer[^"''\s<>]{0,120}x64[^"''\s<>]{0,120}\.zip', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        foreach ($token in $tokenMatches) {
+            $vm = [regex]::Match($token.Value, 'x64[_-](\d+(?:\.\d+){1,3})\.zip', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+            if ($vm.Success) {
+                $v = $vm.Groups[1].Value
+                try { $allVersions += [pscustomobject]@{ Text = $v; Parsed = [version]$v } } catch {}
+            }
         }
     }
 
