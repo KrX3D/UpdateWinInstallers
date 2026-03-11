@@ -24,25 +24,8 @@ $destinationFilePath = Join-Path $destinationPath "WinReducerEX100_x64.exe"
 Write-DeployLog -Message "InstallationFolder: $InstallationFolder | Exe: $InstallationExe" -Level 'DEBUG'
 
 # Online version from WinReducer website
-$creatorPageUrl  = "https://www.winreducer.net/creator-plus-winterstorm2050"
 $downloadPageUrl = "https://www.winreducer.net/storage-plus/e2c12abf-f4f5-4d2b-b9e0-259180c3c010"
-$creatorPageContent = ""
 $webpageContent  = ""
-
-try {
-    $creatorPageContent = (Invoke-WebRequest -Uri $creatorPageUrl -UseBasicParsing -ErrorAction Stop).Content
-    Write-DeployLog -Message "Creator-Seite abgerufen: $creatorPageUrl" -Level 'DEBUG'
-
-    $storageMatch = [regex]::Match($creatorPageContent, 'https://www\.winreducer\.net/storage-plus/[0-9a-fA-F-]{36}', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-    if ($storageMatch.Success) {
-        $downloadPageUrl = $storageMatch.Value
-        Write-DeployLog -Message "Storage-Plus URL auf Creator-Seite gefunden: $downloadPageUrl" -Level 'DEBUG'
-    } else {
-        Write-DeployLog -Message "Keine Storage-Plus URL auf Creator-Seite gefunden, verwende Fallback: $downloadPageUrl" -Level 'WARNING'
-    }
-} catch {
-    Write-DeployLog -Message "Fehler beim Abrufen der Creator-Seite $creatorPageUrl : $_" -Level 'WARNING'
-}
 
 try {
     $webpageContent = (Invoke-WebRequest -Uri $downloadPageUrl -UseBasicParsing -ErrorAction Stop).Content
@@ -56,47 +39,57 @@ $downloadURL  = ""
 $zipFileName  = ""
 
 if ($webpageContent) {
-    $zipPattern = 'WinReducer_EX_Series_x64_(\d+(?:\.\d+){1,3})\.zip'
-    $versionMatches = [regex]::Matches($webpageContent, $zipPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $decodedHtml = [System.Net.WebUtility]::HtmlDecode($webpageContent)
+    $decodedUri  = [System.Uri]::UnescapeDataString($webpageContent)
+    $decodedBoth = [System.Uri]::UnescapeDataString($decodedHtml)
+    $searchBlobs = @($webpageContent, $decodedHtml, $decodedUri, $decodedBoth)
 
-    if ($versionMatches.Count -gt 0) {
-        $allVersions = @()
+    $zipPattern = 'WinReducer_EX_Series_x64_(\d+(?:\.\d+){1,3})\.zip'
+    $allVersions = @()
+    foreach ($blob in $searchBlobs) {
+        $versionMatches = [regex]::Matches($blob, $zipPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
         foreach ($match in $versionMatches) {
             $v = $match.Groups[1].Value
             try { $allVersions += [pscustomobject]@{ Text = $v; Parsed = [version]$v } } catch {}
         }
+    }
 
-        if ($allVersions.Count -gt 0) {
-            $latest = $allVersions | Sort-Object Parsed -Descending | Select-Object -First 1
-            $versionText = $latest.Text
-            $zipFileName = "WinReducer_EX_Series_x64_$versionText.zip"
-        }
+    if ($allVersions.Count -gt 0) {
+        $latest = $allVersions | Sort-Object Parsed -Descending | Select-Object -First 1
+        $versionText = $latest.Text
+        $zipFileName = "WinReducer_EX_Series_x64_$versionText.zip"
     }
 
     if ($zipFileName) {
         $escapedFileName = [regex]::Escape($zipFileName)
+        $encodedFileName = [regex]::Escape([System.Uri]::EscapeDataString($zipFileName))
         $urlPatterns = @(
             ('https?:\/\/[^"''\s]+{0}(?:\?[^"''\s]*)?' -f $escapedFileName),
             ('https?://[^"''\s]+{0}(?:\?[^"''\s]*)?' -f $escapedFileName),
+            ('https?:\/\/[^"''\s]+{0}(?:\?[^"''\s]*)?' -f $encodedFileName),
+            ('https?://[^"''\s]+{0}(?:\?[^"''\s]*)?' -f $encodedFileName),
             ('href="([^"]*{0}[^"]*)"' -f $escapedFileName),
-            ('''url''\s*:\s*''([^'']*{0}[^'']*)''' -f $escapedFileName),
+            ('href="([^"]*{0}[^"]*)"' -f $encodedFileName),
             ('"url"\s*:\s*"([^"]*{0}[^"]*)"' -f $escapedFileName)
         )
 
-        foreach ($pattern in $urlPatterns) {
-            $urlMatch = [regex]::Match($webpageContent, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-            if ($urlMatch.Success) {
-                $candidate = if ($urlMatch.Groups.Count -gt 1 -and $urlMatch.Groups[1].Value) { $urlMatch.Groups[1].Value } else { $urlMatch.Value }
-                if ($candidate) {
-                    $candidate = $candidate.Replace('\\/', '/')
-                    if ($candidate -match '^https?://') {
-                        $downloadURL = $candidate
-                    } elseif ($candidate.StartsWith('/')) {
-                        $downloadURL = "https://www.winreducer.net$candidate"
+        foreach ($blob in $searchBlobs) {
+            foreach ($pattern in $urlPatterns) {
+                $urlMatch = [regex]::Match($blob, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                if ($urlMatch.Success) {
+                    $candidate = if ($urlMatch.Groups.Count -gt 1 -and $urlMatch.Groups[1].Value) { $urlMatch.Groups[1].Value } else { $urlMatch.Value }
+                    if ($candidate) {
+                        $candidate = $candidate.Replace('\\/', '/')
+                        if ($candidate -match '^https?://') {
+                            $downloadURL = $candidate
+                        } elseif ($candidate.StartsWith('/')) {
+                            $downloadURL = "https://www.winreducer.net$candidate"
+                        }
                     }
                 }
-            }
 
+                if ($downloadURL) { break }
+            }
             if ($downloadURL) { break }
         }
     }
@@ -110,6 +103,11 @@ if (-not $downloadURL -and $zipFileName) {
 Write-DeployLog -Message "Online-Version: $versionText" -Level 'INFO'
 Write-DeployLog -Message "Online-Datei: $zipFileName" -Level 'DEBUG'
 Write-DeployLog -Message "Download-URL: $downloadURL" -Level 'DEBUG'
+
+if (-not $versionText -and $webpageContent) {
+    $snippet = $webpageContent.Substring(0, [Math]::Min(800, $webpageContent.Length))
+    Write-DeployLog -Message "Keine x64 ZIP-Version gefunden. HTML-Start (800 Zeichen): $snippet" -Level 'WARNING'
+}
 
 # Local version (FileVersion from exe)
 $localVersion = ""
