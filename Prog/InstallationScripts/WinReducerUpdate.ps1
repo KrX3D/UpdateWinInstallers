@@ -26,9 +26,11 @@ Write-DeployLog -Message "InstallationFolder: $InstallationFolder | Exe: $Instal
 # Online version from WinReducer website
 $downloadPageUrl = "https://www.winreducer.net/storage-plus/e2c12abf-f4f5-4d2b-b9e0-259180c3c010"
 $webpageContent  = ""
+$webSession      = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 
 try {
-    $webpageContent = (Invoke-WebRequest -Uri $downloadPageUrl -UseBasicParsing -ErrorAction Stop).Content
+    $webResponse = Invoke-WebRequest -Uri $downloadPageUrl -WebSession $webSession -UseBasicParsing -ErrorAction Stop
+    $webpageContent = $webResponse.Content
     Write-DeployLog -Message "Storage-Seite abgerufen: $downloadPageUrl" -Level 'DEBUG'
 } catch {
     Write-DeployLog -Message "Fehler beim Abrufen der Storage-Seite $downloadPageUrl : $_" -Level 'ERROR'
@@ -43,12 +45,37 @@ if ($webpageContent) {
     $storageIdMatch = [regex]::Match($downloadPageUrl, '[0-9a-fA-F-]{36}$')
     if ($storageIdMatch.Success) {
         $storageId = $storageIdMatch.Value
-        $headers = @{ 'Content-Type' = 'application/json' }
+        $headers = @{
+            'Content-Type' = 'application/json'
+            'Accept'       = 'application/json, text/plain, */*'
+            'Origin'       = 'https://www.winreducer.net'
+            'Referer'      = $downloadPageUrl
+            'x-wix-brand'  = 'wix'
+        }
+
+        # Bootstrap Wix visitor session/token endpoint to avoid permission denied on file-sharing API.
+        try {
+            $null = Invoke-RestMethod -Uri 'https://www.winreducer.net/_api/v1/access-tokens' -Method Get -WebSession $webSession -Headers @{ 'Accept' = 'application/json, text/plain, */*' } -ErrorAction Stop
+            Write-DeployLog -Message 'Wix Access-Token Endpoint erfolgreich initialisiert.' -Level 'DEBUG'
+        } catch {
+            Write-DeployLog -Message "Wix Access-Token Bootstrap fehlgeschlagen: $_" -Level 'WARNING'
+        }
+
+        try {
+            $xsrfCookie = $webSession.Cookies.GetCookies('https://www.winreducer.net') | Where-Object { $_.Name -eq 'XSRF-TOKEN' } | Select-Object -First 1
+            if ($xsrfCookie -and $xsrfCookie.Value) {
+                $headers['x-xsrf-token'] = [System.Uri]::UnescapeDataString($xsrfCookie.Value)
+                Write-DeployLog -Message 'XSRF-Token aus Cookie gesetzt.' -Level 'DEBUG'
+            }
+        } catch {
+            Write-DeployLog -Message "XSRF-Token konnte nicht gelesen werden: $_" -Level 'WARNING'
+        }
+
         $apiBase = 'https://www.winreducer.net/api/v1/file-sharing'
         $queryBody = @{ filter = @{ parentLibraryItemIds = @($storageId) }; sort = @{ orientation = 'ASC'; sortBy = 'NAME' } } | ConvertTo-Json -Depth 6
 
         try {
-            $queryResponse = Invoke-RestMethod -Uri "$apiBase/library-items/query" -Method Post -Headers $headers -Body $queryBody -ErrorAction Stop
+            $queryResponse = Invoke-RestMethod -Uri "$apiBase/library-items/query" -Method Post -WebSession $webSession -Headers $headers -Body $queryBody -ErrorAction Stop
             $items = @($queryResponse.libraryItems)
             Write-DeployLog -Message "Storage API: $($items.Count) Eintraege gefunden." -Level 'DEBUG'
 
@@ -75,7 +102,7 @@ if ($webpageContent) {
                     $zipFileName = $latest.Name
 
                     $viewBody = @{ actions = @(@{ libraryItemId = $latest.ItemId }) } | ConvertTo-Json -Depth 6
-                    $viewResponse = Invoke-RestMethod -Uri "$apiBase/library-items/view-file" -Method Post -Headers $headers -Body $viewBody -ErrorAction Stop
+                    $viewResponse = Invoke-RestMethod -Uri "$apiBase/library-items/view-file" -Method Post -WebSession $webSession -Headers $headers -Body $viewBody -ErrorAction Stop
                     $downloadURL = @($viewResponse.urls | Select-Object -ExpandProperty url -ErrorAction SilentlyContinue | Select-Object -First 1)
                     Write-DeployLog -Message "Storage API Download-Link ermittelt fuer Item $($latest.ItemId)." -Level 'DEBUG'
                 }
