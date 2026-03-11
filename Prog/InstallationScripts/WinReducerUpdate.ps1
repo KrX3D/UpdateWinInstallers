@@ -24,21 +24,74 @@ $destinationFilePath = Join-Path $destinationPath "WinReducerEX100_x64.exe"
 Write-DeployLog -Message "InstallationFolder: $InstallationFolder | Exe: $InstallationExe" -Level 'DEBUG'
 
 # Online version from WinReducer website
-$webpageURL    = "https://www.winreducer.net/winreducer-ex-series.html"
-$webpageContent = ""
+$downloadPageUrl = "https://www.winreducer.net/storage-plus/e2c12abf-f4f5-4d2b-b9e0-259180c3c010"
+$webpageContent  = ""
 try {
-    $webpageContent = (Invoke-WebRequest -Uri $webpageURL -UseBasicParsing -ErrorAction Stop).Content
-    Write-DeployLog -Message "Webseite abgerufen: $webpageURL" -Level 'DEBUG'
+    $webpageContent = (Invoke-WebRequest -Uri $downloadPageUrl -UseBasicParsing -ErrorAction Stop).Content
+    Write-DeployLog -Message "Webseite abgerufen: $downloadPageUrl" -Level 'DEBUG'
 } catch {
-    Write-DeployLog -Message "Fehler beim Abrufen der Webseite $webpageURL : $_" -Level 'ERROR'
+    Write-DeployLog -Message "Fehler beim Abrufen der Webseite $downloadPageUrl : $_" -Level 'ERROR'
 }
 
-$versionText = ""
+$versionText  = ""
+$downloadURL  = ""
+$zipFileName  = ""
+
 if ($webpageContent) {
-    $m = [regex]::Match($webpageContent, '(?<=<div class="paragraph" style="text-align:center;"><font size="6"><strong><font color="#fff">)v(.*?)(?=<\/font>)')
-    $versionText = $m.Groups[1].Value.Trim()
+    $zipPattern = 'WinReducer_EX_Series_x64_(\d+(?:\.\d+){1,3})\.zip'
+    $versionMatches = [regex]::Matches($webpageContent, $zipPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+    if ($versionMatches.Count -gt 0) {
+        $allVersions = @()
+        foreach ($match in $versionMatches) {
+            $v = $match.Groups[1].Value
+            try { $allVersions += [pscustomobject]@{ Text = $v; Parsed = [version]$v } } catch {}
+        }
+
+        if ($allVersions.Count -gt 0) {
+            $latest = $allVersions | Sort-Object Parsed -Descending | Select-Object -First 1
+            $versionText = $latest.Text
+            $zipFileName = "WinReducer_EX_Series_x64_$versionText.zip"
+        }
+    }
+
+    if ($zipFileName) {
+        $escapedFileName = [regex]::Escape($zipFileName)
+        $urlPatterns = @(
+            "https?:\\/\\/[^\"'\s]+$escapedFileName(?:\?[^\"'\s]*)?",
+            "https?://[^\"'\s]+$escapedFileName(?:\?[^\"'\s]*)?",
+            "href=\"([^\"]*$escapedFileName[^\"]*)\"",
+            "'url'\s*:\s*'([^']*$escapedFileName[^']*)'",
+            "\"url\"\s*:\s*\"([^\"]*$escapedFileName[^\"]*)\""
+        )
+
+        foreach ($pattern in $urlPatterns) {
+            $urlMatch = [regex]::Match($webpageContent, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+            if ($urlMatch.Success) {
+                $candidate = if ($urlMatch.Groups.Count -gt 1 -and $urlMatch.Groups[1].Value) { $urlMatch.Groups[1].Value } else { $urlMatch.Value }
+                if ($candidate) {
+                    $candidate = $candidate.Replace('\\/', '/')
+                    if ($candidate -match '^https?://') {
+                        $downloadURL = $candidate
+                    } elseif ($candidate.StartsWith('/')) {
+                        $downloadURL = "https://www.winreducer.net$candidate"
+                    }
+                }
+            }
+
+            if ($downloadURL) { break }
+        }
+    }
 }
+
+if (-not $downloadURL -and $zipFileName) {
+    $downloadURL = "$downloadPageUrl/$zipFileName"
+    Write-DeployLog -Message "Keine direkte Download-URL in HTML gefunden, verwende Fallback-URL: $downloadURL" -Level 'WARNING'
+}
+
 Write-DeployLog -Message "Online-Version: $versionText" -Level 'INFO'
+Write-DeployLog -Message "Online-Datei: $zipFileName" -Level 'DEBUG'
+Write-DeployLog -Message "Download-URL: $downloadURL" -Level 'DEBUG'
 
 # Local version (FileVersion from exe)
 $localVersion = ""
@@ -55,16 +108,18 @@ Write-Host "Online Version: $versionText"   -ForegroundColor Cyan
 Write-Host ""
 
 # Download and update if newer
-if ($versionText -ne '' -and $versionText -gt $localVersion) {
+$onlineVersion = $null
+$localVersionObj = $null
+try { if ($versionText) { $onlineVersion = [version]$versionText } } catch {
+    Write-DeployLog -Message "Online-Version nicht gueltig: $versionText" -Level 'WARNING'
+}
+try { if ($localVersion) { $localVersionObj = [version]$localVersion } } catch {
+    Write-DeployLog -Message "Lokale Version nicht gueltig: $localVersion" -Level 'WARNING'
+}
+
+if ($onlineVersion -and (-not $localVersionObj -or $onlineVersion -gt $localVersionObj) -and $downloadURL) {
     Write-DeployLog -Message "Update verfuegbar: $localVersion -> $versionText" -Level 'INFO'
-
-    # Extract download URL from page
-    $dlMatch     = [regex]::Match($webpageContent, '<a class="wsite-button wsite-button-large wsite-button-highlight" href="(.+?)".*?>\s*<span class="wsite-button-inner">DOWNLOAD \(x64\)</span>')
-    $partialUrl  = $dlMatch.Groups[1].Value
-    $downloadURL = "https://www.winreducer.net$partialUrl"
     $downloadPath = Join-Path $env:TEMP "WinReducerEX100_x64_new.zip"
-
-    Write-DeployLog -Message "Download-URL: $downloadURL" -Level 'DEBUG'
 
     $wc = New-Object System.Net.WebClient
     $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -109,6 +164,9 @@ if ($versionText -ne '' -and $versionText -gt $localVersion) {
         Write-Host "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." -ForegroundColor Red
         Write-DeployLog -Message "Download fehlgeschlagen." -Level 'ERROR'
     }
+} elseif (-not $downloadURL -and $versionText) {
+    Write-Host "Online Version erkannt, aber Download-Link nicht gefunden. $ProgramName wurde nicht aktualisiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "Version erkannt ($versionText), aber kein Download-Link gefunden." -Level 'WARNING'
 } else {
     Write-Host "Kein Online Update verfuegbar. $ProgramName ist aktuell." -ForegroundColor DarkGray
     Write-DeployLog -Message "Kein Update erforderlich." -Level 'INFO'
