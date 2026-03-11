@@ -24,13 +24,31 @@ $destinationFilePath = Join-Path $destinationPath "WinReducerEX100_x64.exe"
 Write-DeployLog -Message "InstallationFolder: $InstallationFolder | Exe: $InstallationExe" -Level 'DEBUG'
 
 # Online version from WinReducer website
+$creatorPageUrl  = "https://www.winreducer.net/creator-plus-winterstorm2050"
 $downloadPageUrl = "https://www.winreducer.net/storage-plus/e2c12abf-f4f5-4d2b-b9e0-259180c3c010"
+$creatorPageContent = ""
 $webpageContent  = ""
+
+try {
+    $creatorPageContent = (Invoke-WebRequest -Uri $creatorPageUrl -UseBasicParsing -ErrorAction Stop).Content
+    Write-DeployLog -Message "Creator-Seite abgerufen: $creatorPageUrl" -Level 'DEBUG'
+
+    $storageMatch = [regex]::Match($creatorPageContent, 'https://www\.winreducer\.net/storage-plus/[0-9a-fA-F-]{36}', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($storageMatch.Success) {
+        $downloadPageUrl = $storageMatch.Value
+        Write-DeployLog -Message "Storage-Plus URL auf Creator-Seite gefunden: $downloadPageUrl" -Level 'DEBUG'
+    } else {
+        Write-DeployLog -Message "Keine Storage-Plus URL auf Creator-Seite gefunden, verwende Fallback: $downloadPageUrl" -Level 'WARNING'
+    }
+} catch {
+    Write-DeployLog -Message "Fehler beim Abrufen der Creator-Seite $creatorPageUrl : $_" -Level 'WARNING'
+}
+
 try {
     $webpageContent = (Invoke-WebRequest -Uri $downloadPageUrl -UseBasicParsing -ErrorAction Stop).Content
-    Write-DeployLog -Message "Webseite abgerufen: $downloadPageUrl" -Level 'DEBUG'
+    Write-DeployLog -Message "Storage-Seite abgerufen: $downloadPageUrl" -Level 'DEBUG'
 } catch {
-    Write-DeployLog -Message "Fehler beim Abrufen der Webseite $downloadPageUrl : $_" -Level 'ERROR'
+    Write-DeployLog -Message "Fehler beim Abrufen der Storage-Seite $downloadPageUrl : $_" -Level 'ERROR'
 }
 
 $versionText  = ""
@@ -58,11 +76,11 @@ if ($webpageContent) {
     if ($zipFileName) {
         $escapedFileName = [regex]::Escape($zipFileName)
         $urlPatterns = @(
-            "https?:\\/\\/[^\"'\s]+$escapedFileName(?:\?[^\"'\s]*)?",
-            "https?://[^\"'\s]+$escapedFileName(?:\?[^\"'\s]*)?",
-            "href=\"([^\"]*$escapedFileName[^\"]*)\"",
-            "'url'\s*:\s*'([^']*$escapedFileName[^']*)'",
-            "\"url\"\s*:\s*\"([^\"]*$escapedFileName[^\"]*)\""
+            ('https?:\/\/[^"''\s]+{0}(?:\?[^"''\s]*)?' -f $escapedFileName),
+            ('https?://[^"''\s]+{0}(?:\?[^"''\s]*)?' -f $escapedFileName),
+            ('href="([^"]*{0}[^"]*)"' -f $escapedFileName),
+            ('''url''\s*:\s*''([^'']*{0}[^'']*)''' -f $escapedFileName),
+            ('"url"\s*:\s*"([^"]*{0}[^"]*)"' -f $escapedFileName)
         )
 
         foreach ($pattern in $urlPatterns) {
