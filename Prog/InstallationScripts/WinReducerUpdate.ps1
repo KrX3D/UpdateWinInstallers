@@ -103,7 +103,7 @@ if ($webpageContent) {
 
                     $viewBody = @{ actions = @(@{ libraryItemId = $latest.ItemId }) } | ConvertTo-Json -Depth 6
                     $viewResponse = Invoke-RestMethod -Uri "$apiBase/library-items/view-file" -Method Post -WebSession $webSession -Headers $headers -Body $viewBody -ErrorAction Stop
-                    $downloadURL = @($viewResponse.urls | Select-Object -ExpandProperty url -ErrorAction SilentlyContinue | Select-Object -First 1)
+                    $downloadURL = ($viewResponse.urls | Select-Object -ExpandProperty url -ErrorAction SilentlyContinue | Select-Object -First 1)
                     Write-DeployLog -Message "Storage API Download-Link ermittelt fuer Item $($latest.ItemId)." -Level 'DEBUG'
                 }
             }
