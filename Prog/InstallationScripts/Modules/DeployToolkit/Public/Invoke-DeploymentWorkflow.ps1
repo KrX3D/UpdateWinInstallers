@@ -112,7 +112,6 @@ function Get-InstallerExecutionPlan {
     InstallerVersion   = $InstallerVersion
     InstallationFlag   = [bool]$InstallationFlag
     ShouldExecute      = $shouldInstall
-    PassInstallationFlag = [bool]$InstallationFlag
     Reason             = $reason
   }
 }
@@ -122,13 +121,13 @@ function Invoke-InstallerScript {
   param(
     [Parameter(Mandatory)][string]$PSHostPath,
     [Parameter(Mandatory)][string]$ScriptPath,
-    [switch]$PassInstallationFlag
+    [switch]$InstallationFlag
   )
 
   if (-not (Test-Path -LiteralPath $ScriptPath)) { return $false }
 
   $args = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath)
-  if ($PassInstallationFlag) {
+  if ($InstallationFlag) {
     $args += '-InstallationFlag'
   }
 
@@ -477,7 +476,7 @@ function Invoke-InstallDecision {
 
   if ($InstallationFlag) {
     Write-DeployLog -Message "[$Context] InstallationFlag gesetzt, starte: $InstallScript" -Level 'INFO'
-    $ok = Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript -PassInstallationFlag
+    $ok = Invoke-InstallerScript -PSHostPath $PSHostPath -ScriptPath $InstallScript -InstallationFlag
     if (-not $ok) {
       Write-DeployLog -Message "[$Context] Installationsskript konnte nicht gestartet werden: $InstallScript" -Level 'ERROR'
     }
