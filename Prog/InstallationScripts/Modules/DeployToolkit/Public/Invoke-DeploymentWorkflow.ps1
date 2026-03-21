@@ -124,18 +124,30 @@ function Invoke-InstallerScript {
     [switch]$InstallationFlag
   )
 
-  if (-not (Test-Path -LiteralPath $ScriptPath)) { return $false }
+  if (-not (Test-Path -LiteralPath $PSHostPath)) {
+    Write-DeployLog -Message "PSHostPath nicht gefunden: $PSHostPath" -Level 'ERROR'
+    return $false
+  }
+
+  if (-not (Test-Path -LiteralPath $ScriptPath)) {
+    Write-DeployLog -Message "Installationsskript nicht gefunden: $ScriptPath" -Level 'ERROR'
+    return $false
+  }
 
   $args = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath)
   if ($InstallationFlag) {
     $args += '-InstallationFlag'
   }
 
+  Write-DeployLog -Message "Starte Installationsskript: $ScriptPath" -Level 'INFO'
+
   try {
     & $PSHostPath @args
+    Write-DeployLog -Message "Installationsskript abgeschlossen: $ScriptPath" -Level 'SUCCESS'
     return $true
   }
   catch {
+    Write-DeployLog -Message "Installationsskript fehlgeschlagen: $ScriptPath | Fehler: $($_.Exception.Message)" -Level 'ERROR'
     return $false
   }
 }
