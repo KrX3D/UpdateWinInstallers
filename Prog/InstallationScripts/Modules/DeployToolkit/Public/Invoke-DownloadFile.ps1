@@ -3,7 +3,7 @@
   param(
     [Parameter(Mandatory)][string]$Url,
     [Parameter(Mandatory)][string]$OutFile,
-    [int]$Retries = 1,
+    [int]$Retries = 3,
     [int]$RetryDelaySeconds = 2,
     [System.Net.SecurityProtocolType]$SecurityProtocol
   )
@@ -16,12 +16,10 @@
       }
       $protocol = $protocol -bor [System.Net.SecurityProtocolType]::Tls11 -bor [System.Net.SecurityProtocolType]::Tls
       [System.Net.ServicePointManager]::SecurityProtocol = $protocol
-    }
-    catch {
+    } catch {
       try { [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 } catch {}
     }
-  }
-  else {
+  } else {
     try { [System.Net.ServicePointManager]::SecurityProtocol = $SecurityProtocol } catch {}
   }
 
@@ -32,30 +30,26 @@
 
   for ($i = 1; $i -le $Retries; $i++) {
     try {
-      if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "Download [$i/$Retries]: $Url -> $OutFile (WebClient)" -Level "INFO"
-      }
+      Write-DeployLog -Message "Download [$i/$Retries]: $Url -> $OutFile" -Level 'INFO'
 
       $wc = New-Object System.Net.WebClient
       try {
         $wc.DownloadFile($Url, $OutFile)
-      }
-      finally {
+      } finally {
         $wc.Dispose()
       }
 
       if ((Test-Path $OutFile -PathType Leaf) -and ((Get-Item $OutFile).Length -gt 0)) {
-        if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-          Write_LogEntry -Message "Download OK ($((Get-Item $OutFile).Length) Bytes)" -Level "SUCCESS"
-        }
+        Write-DeployLog -Message "Download OK ($((Get-Item $OutFile).Length) Bytes)" -Level 'SUCCESS'
         return $true
       }
 
-      throw "Downloaded file missing/empty."
-    }
-    catch {
-      if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-        Write_LogEntry -Message "Download fehlgeschlagen: $_" -Level "WARNING"
+      throw "Downloaded file missing or empty."
+    } catch {
+      Write-DeployLog -Message "Download fehlgeschlagen (Versuch $i/$Retries): $_" -Level 'WARNING'
+      # Clean up partial file before next attempt
+      if (Test-Path -LiteralPath $OutFile) {
+        try { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue } catch {}
       }
       if ($i -lt $Retries) {
         Start-Sleep -Seconds $RetryDelaySeconds
@@ -63,8 +57,6 @@
     }
   }
 
-  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "Download endgültig fehlgeschlagen: $Url" -Level "ERROR"
-  }
+  Write-DeployLog -Message "Download endgültig fehlgeschlagen: $Url" -Level 'ERROR'
   return $false
 }

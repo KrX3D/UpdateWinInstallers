@@ -3,34 +3,47 @@ function Invoke-WebRequestCompat {
   param(
     [Parameter(Mandatory)][string]$Uri,
     [string]$OutFile,
-    [switch]$ReturnContent
+    [switch]$ReturnContent,
+    [int]$Retries = 3,
+    [int]$RetryDelaySeconds = 2
   )
 
   try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
   if ($OutFile) {
-    try {
-      Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -ErrorAction Stop | Out-Null
-      return $true
-    } catch {
+    for ($i = 1; $i -le $Retries; $i++) {
       try {
-        $wc = New-Object System.Net.WebClient
-        $wc.DownloadFile($Uri, $OutFile)
-        $wc.Dispose()
+        Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -ErrorAction Stop | Out-Null
         return $true
       } catch {
-        return $false
+        Write-DeployLog -Message "Invoke-WebRequestCompat OutFile Versuch $i/$Retries fehlgeschlagen: $_" -Level 'WARNING'
+        if ($i -lt $Retries) { Start-Sleep -Seconds $RetryDelaySeconds }
       }
+    }
+    try {
+      $wc = New-Object System.Net.WebClient
+      $wc.DownloadFile($Uri, $OutFile)
+      $wc.Dispose()
+      return $true
+    } catch {
+      Write-DeployLog -Message "Invoke-WebRequestCompat WebClient Fallback fehlgeschlagen: $_" -Level 'ERROR'
+      return $false
     }
   }
 
-  try {
-    $res = Invoke-WebRequest -Uri $Uri -UseBasicParsing -ErrorAction Stop
-    if ($ReturnContent) { return $res.Content }
-    return $res
-  } catch {
-    return $null
+  for ($i = 1; $i -le $Retries; $i++) {
+    try {
+      $res = Invoke-WebRequest -Uri $Uri -UseBasicParsing -ErrorAction Stop
+      if ($ReturnContent) { return $res.Content }
+      return $res
+    } catch {
+      Write-DeployLog -Message "Invoke-WebRequestCompat Versuch $i/$Retries fehlgeschlagen ($Uri): $_" -Level 'WARNING'
+      if ($i -lt $Retries) { Start-Sleep -Seconds $RetryDelaySeconds }
+    }
   }
+
+  Write-DeployLog -Message "Invoke-WebRequestCompat endgültig fehlgeschlagen: $Uri" -Level 'ERROR'
+  return $null
 }
 
 function Get-OnlineVersionFromContent {

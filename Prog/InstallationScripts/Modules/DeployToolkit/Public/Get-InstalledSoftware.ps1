@@ -8,14 +8,10 @@
     'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
   )
 
-  if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-    Write_LogEntry -Message "Durchsuche Registry-Pfade nach installierten Programmen..." -Level "DEBUG"
-  }
+  Write-DeployLog -Message "Durchsuche Registry-Pfade nach installierten Programmen..." -Level 'DEBUG'
 
   $results = foreach ($p in $paths) {
-    if (Get-Command Write_LogEntry -ErrorAction SilentlyContinue) {
-      Write_LogEntry -Message "Prüfe Registry-Pfad: $p" -Level "DEBUG"
-    }
+    Write-DeployLog -Message "Prüfe Registry-Pfad: $p" -Level 'DEBUG'
 
     if (Test-Path $p) {
       Get-ChildItem $p -ErrorAction SilentlyContinue |
@@ -27,7 +23,12 @@
     }
   }
 
-  $results | Select-Object -First 1
+  # Sort by DisplayVersion descending so the highest installed version wins
+  # when multiple registry entries match (e.g. 32-bit and 64-bit entries)
+  $results |
+    Where-Object { $_.PSObject.Properties['DisplayVersion'] } |
+    Sort-Object { [version]($_.DisplayVersion -replace '[^\d\.]','') } -Descending -ErrorAction SilentlyContinue |
+    Select-Object -First 1
 }
 
 function Get-InstalledSoftwareVersion {

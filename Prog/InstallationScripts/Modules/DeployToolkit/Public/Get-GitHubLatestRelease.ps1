@@ -9,22 +9,14 @@ function Get-GitHubLatestRelease {
   #>
   [CmdletBinding()]
   param(
-    # e.g. "arduino/arduino-ide"
     [Parameter(Mandatory)][string]$Repo,
-
     [string]$Token,
-
-    # Simple name regex to pick an asset (e.g. '(?i)win.*x64.*\.exe$').
     [string]$AssetNamePattern,
-
-    # Advanced scriptblock filter; receives each asset object as the first argument.
-    # Takes priority over AssetNamePattern when supplied.
     [scriptblock]$AssetFilter,
-
-    # Regex applied to the asset name (or tag_name fallback) to extract the version.
     [string]$VersionRegex = '(\d+\.\d+\.\d+)',
     [int]$VersionGroup = 1,
-
+    [int]$Retries = 3,
+    [int]$RetryDelaySeconds = 2,
     [string]$Context = 'GitHubRelease'
   )
 
@@ -35,16 +27,26 @@ function Get-GitHubLatestRelease {
   }
   if ($Token) { $headers['Authorization'] = "token $Token" }
 
+  try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+
   Write-DeployLog -Message "[$Context] GitHub API: $apiUrl" -Level 'DEBUG'
 
-  try {
-    $release = Invoke-RestMethod -Uri $apiUrl -Headers $headers -ErrorAction Stop
-  } catch {
-    Write-DeployLog -Message "[$Context] GitHub API Fehler: $($_.Exception.Message)" -Level 'ERROR'
+  $release = $null
+  for ($i = 1; $i -le $Retries; $i++) {
+    try {
+      $release = Invoke-RestMethod -Uri $apiUrl -Headers $headers -ErrorAction Stop
+      break
+    } catch {
+      Write-DeployLog -Message "[$Context] GitHub API Versuch $i/$Retries fehlgeschlagen: $($_.Exception.Message)" -Level 'WARNING'
+      if ($i -lt $Retries) { Start-Sleep -Seconds $RetryDelaySeconds }
+    }
+  }
+
+  if (-not $release) {
+    Write-DeployLog -Message "[$Context] GitHub API endgültig fehlgeschlagen nach $Retries Versuchen." -Level 'ERROR'
     return $null
   }
 
-  # Select the best asset
   $asset = if ($AssetFilter) {
     $release.assets | Where-Object { & $AssetFilter $_ } | Select-Object -First 1
   } elseif ($AssetNamePattern) {
@@ -56,7 +58,6 @@ function Get-GitHubLatestRelease {
   $downloadUrl = if ($asset) { $asset.browser_download_url } else { $null }
   $assetName   = if ($asset) { $asset.name } else { $null }
 
-  # Extract version from asset name, fall back to tag_name
   $version = $null
   $sources = @()
   if ($assetName) { $sources += $assetName }
