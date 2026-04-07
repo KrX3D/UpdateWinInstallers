@@ -1,24 +1,44 @@
-﻿param(
+param(
     [switch]$InstallationFlag #wird nur bei $true genutzt, um zB conifg dateien zu kopiere. Damit Konig Dateien NUR bei einer Installation und NICHT bei einem Update kopiert werden.
 )
 
 $ProgramName = "Notepad++"
 $ScriptType  = "Install"
+
+# === Logger-Header: automatisch eingefügt ===
 $parentPath  = Split-Path -Path $PSScriptRoot -Parent
+$modulePath  = Join-Path -Path $parentPath -ChildPath 'Modules\Logger\Logger.psm1'
 
-$dtPath = Join-Path $parentPath "Modules\DeployToolkit\DeployToolkit.psm1"
-if (-not (Test-Path $dtPath)) { throw "DeployToolkit nicht gefunden: $dtPath" }
-Import-Module -Name $dtPath -Force -ErrorAction Stop
+if (Test-Path $modulePath) {
+    Import-Module -Name $modulePath -Force -ErrorAction Stop
 
-Start-DeployContext -ProgramName $ProgramName -ScriptType $ScriptType -ScriptRoot $parentPath
+    if (-not (Get-Variable -Name logRoot -Scope Script -ErrorAction SilentlyContinue)) {
+        $logRoot = Join-Path -Path $parentPath -ChildPath 'Log'
+    }
+    Set_LoggerConfig -LogRootPath $logRoot | Out-Null
+
+    if (Get-Command -Name Initialize_LogSession -ErrorAction SilentlyContinue) {
+        Initialize_LogSession -ProgramName $ProgramName -ScriptType $ScriptType | Out-Null #-WriteSystemInfo
+    }
+}
+# === Ende Logger-Header ===
 
 Write_LogEntry -Message "Script gestartet mit InstallationFlag: $($InstallationFlag)" -Level "INFO"
 Write_LogEntry -Message "ProgramName: $($ProgramName); ScriptType: $($ScriptType)" -Level "DEBUG"
 
-$config = Get-DeployConfigOrExit -ScriptRoot $parentPath -ProgramName $ProgramName -FinalizeMessage "$ProgramName - Script beendet"
-$InstallationFolder = $config.InstallationFolder
-$Serverip = $config.Serverip
-$PSHostPath = $config.PSHostPath
+# Import shared configuration
+$configPath = Join-Path -Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -ChildPath "Customize_Windows\Scripte\PowerShellVariables.ps1"
+Write_LogEntry -Message "Konfigurationspfad gesetzt: $($configPath)" -Level "DEBUG"
+
+if (Test-Path -Path $configPath) {
+        . $configPath # Import config file variables into current scope (shared server IP, paths, etc.)
+        Write_LogEntry -Message "Konfigurationsdatei $($configPath) gefunden und importiert." -Level "INFO"
+} else {
+    Write_LogEntry -Message "Konfigurationsdatei nicht gefunden: $($configPath)" -Level "ERROR"
+    Write-Host ""
+    Write-Host "Konfigurationsdatei nicht gefunden: $configPath" -ForegroundColor "Red"
+    exit
+}
 
 #Bei Update wird ohne deinstallation die neue Version richtig installiert
 
@@ -29,7 +49,7 @@ Write_LogEntry -Message "Gefundene Notepad++ Installer (erste): $($($NotepadPlus
 
 if ($NotepadPlusPlusExeFiles) {
     Write_LogEntry -Message "Starte Notepad++ Installer: $($NotepadPlusPlusExeFiles.FullName) mit Argument '/S' (synchronous - Wait)" -Level "INFO"
-    [void](Invoke-InstallerFile -FilePath $NotepadPlusPlusExeFiles.FullName -Arguments "/S" -Wait)
+    Start-Process -Wait -FilePath $NotepadPlusPlusExeFiles.FullName -ArgumentList "/S"
     Write_LogEntry -Message "Notepad++ Installer ausgeführt: $($NotepadPlusPlusExeFiles.FullName)" -Level "SUCCESS"
 }
 
@@ -60,11 +80,11 @@ if ($InstallationFlag -eq $true) {
 		#Start-Process -Wait -FilePath "REGEDIT.EXE" -ArgumentList "/S", $regFile.FullName
 	#}
 	
-	& $PSHostPath `
-		-NoLogo -NoProfile -ExecutionPolicy Bypass `
-		-File "$Serverip\Daten\Customize_Windows\Scripte\RegistryImport.ps1" `
-		-Path "$Serverip\Daten\Prog\Notepad_Taskbar.reg"
-    Write_LogEntry -Message "RegistryImport Script aufgerufen: $($Serverip)\Daten\Customize_Windows\Scripte\RegistryImport.ps1 mit Path $($Serverip)\Daten\Prog\Notepad_Taskbar.reg" -Level "INFO"
+	#& $PSHostPath `
+		#-NoLogo -NoProfile -ExecutionPolicy Bypass `
+		#-File "$Serverip\Daten\Customize_Windows\Scripte\RegistryImport.ps1" `
+		#-Path "$Serverip\Daten\Prog\Notepad_Taskbar.reg"
+    #Write_LogEntry -Message "RegistryImport Script aufgerufen: $($Serverip)\Daten\Customize_Windows\Scripte\RegistryImport.ps1 mit Path $($Serverip)\Daten\Prog\Notepad_Taskbar.reg" -Level "INFO"
 
 	Write-Host "Notepad++ wird eingestellt." -foregroundcolor "Yellow"
     Write_LogEntry -Message "Starte Notepad++ Konfigurationsskript: $($Serverip)\Daten\Prog\InstallationScripts\Installation\Notepad_set_config.ps1" -Level "INFO"
@@ -108,4 +128,7 @@ if ($InstallationFlag -eq $true) {
 
 Write_LogEntry -Message "Notepad++ Routine beendet." -Level "INFO"
 
-Stop-DeployContext -FinalizeMessage "$ProgramName - Script beendet"
+# === Logger-Footer: automatisch eingefügt ===
+Write_LogEntry -Message "Script beendet: Program=$($ProgramName), ScriptType=$($ScriptType)" -Level "INFO"
+Finalize_LogSession
+# === Ende Logger-Footer ===

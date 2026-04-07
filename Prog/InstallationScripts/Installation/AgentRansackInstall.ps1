@@ -161,7 +161,7 @@ Write-DeployLog -Message "Prüfe Theme-Config: $configPath" -Level 'DEBUG'
 if (Test-Path $configPath) {
     try {
         $xml = Get-Content -Path $configPath -Raw -ErrorAction Stop
-        $xml = $xml -replace '<UITheme n="\d+"/>', '<UITheme n="5"/>'
+        $xml = $xml -replace '<UITheme n="\d+"/>', '<UITheme n="2"/>'
         $xml | Set-Content -Path $configPath -Encoding UTF8 -ErrorAction Stop
         Write-Host "    Theme auf Silver gesetzt: $configPath" -ForegroundColor Cyan
         Write-DeployLog -Message "UITheme auf n=5 (Silver) gesetzt: $configPath" -Level 'SUCCESS'
