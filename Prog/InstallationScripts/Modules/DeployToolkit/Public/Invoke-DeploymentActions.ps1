@@ -42,7 +42,7 @@ function Invoke-WebRequestCompat {
     }
   }
 
-  Write-DeployLog -Message "Invoke-WebRequestCompat endgÃ¼ltig fehlgeschlagen: $Uri" -Level 'ERROR'
+  Write-DeployLog -Message "Invoke-WebRequestCompat endgültig fehlgeschlagen: $Uri" -Level 'ERROR'
   return $null
 }
 
@@ -59,10 +59,10 @@ function Get-OnlineVersionFromContent {
   )
 
   foreach ($pattern in $Regex) {
-    $matches = [regex]::Matches($Content, $pattern, $RegexOptions)
-    if (-not $matches -or $matches.Count -eq 0) { continue }
+    $regMatches = [regex]::Matches($Content, $pattern, $RegexOptions)
+    if (-not $regMatches -or $regMatches.Count -eq 0) { continue }
 
-    $m = if ($SelectLast) { $matches[$matches.Count - 1] } else { $matches[0] }
+    $m = if ($SelectLast) { $regMatches[$regMatches.Count - 1] } else { $regMatches[0] }
     $raw = $m.Groups[$RegexGroup].Value
     if ([string]::IsNullOrWhiteSpace($raw)) { continue }
 
@@ -153,6 +153,34 @@ function Invoke-InstallerFile {
     Start-Process @startParams | Out-Null
     return $true
   } catch {
+    return $false
+  }
+}
+
+function Copy-DirectoryContents {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Source,
+    [Parameter(Mandatory)][string]$Destination,
+    [string]$Context = 'CopyConfig'
+  )
+
+  if (-not (Test-Path -LiteralPath $Source)) {
+    Write-DeployLog -Message "[$Context] Quellverzeichnis nicht gefunden, übersprungen: $Source" -Level 'DEBUG'
+    return $false
+  }
+
+  if (-not (Test-Path -LiteralPath $Destination)) {
+    New-Item -Path $Destination -ItemType Directory -Force | Out-Null
+    Write-DeployLog -Message "[$Context] Zielverzeichnis erstellt: $Destination" -Level 'DEBUG'
+  }
+
+  try {
+    Get-ChildItem -LiteralPath $Source | Copy-Item -Destination $Destination -Recurse -Force -ErrorAction Stop
+    Write-DeployLog -Message "[$Context] Inhalt kopiert: $Source -> $Destination" -Level 'SUCCESS'
+    return $true
+  } catch {
+    Write-DeployLog -Message "[$Context] Fehler beim Kopieren: $Source -> $Destination | $_" -Level 'WARNING'
     return $false
   }
 }

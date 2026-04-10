@@ -30,12 +30,3 @@
     Sort-Object { [version]($_.DisplayVersion -replace '[^\d\.]','') } -Descending -ErrorAction SilentlyContinue |
     Select-Object -First 1
 }
-
-function Get-InstalledSoftwareVersion {
-  [CmdletBinding()]
-  param([Parameter(Mandatory)][string]$DisplayNameLike)
-
-  $hit = Get-InstalledSoftware -DisplayNameLike $DisplayNameLike
-  if ($hit -and $hit.PSObject.Properties['DisplayVersion']) { return $hit.DisplayVersion }
-  return $null
-}

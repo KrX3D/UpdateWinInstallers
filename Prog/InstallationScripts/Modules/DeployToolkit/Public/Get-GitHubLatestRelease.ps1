@@ -43,7 +43,7 @@ function Get-GitHubLatestRelease {
   }
 
   if (-not $release) {
-    Write-DeployLog -Message "[$Context] GitHub API endgÃ¼ltig fehlgeschlagen nach $Retries Versuchen." -Level 'ERROR'
+    Write-DeployLog -Message "[$Context] GitHub API endgültig fehlgeschlagen nach $Retries Versuchen." -Level 'ERROR'
     return $null
   }
 
