@@ -26,15 +26,15 @@ function Invoke-InstallerScript {
     return $false
   }
 
-  $args = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath)
+  $scriptArgs = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath)
   if ($InstallationFlag) {
-    $args += '-InstallationFlag'
+    $scriptArgs += '-InstallationFlag'
   }
 
   Write-DeployLog -Message "Starte Installationsskript: $ScriptPath" -Level 'INFO'
 
   try {
-    & $PSHostPath @args
+    & $PSHostPath @scriptArgs
     Write-DeployLog -Message "Installationsskript abgeschlossen: $ScriptPath" -Level 'SUCCESS'
     return $true
   }
@@ -284,4 +284,60 @@ function Confirm-DownloadedInstaller {
   }
 
   return $true
+}
+
+function Write-VersionStatus {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$ProgramName,
+    [string]$InstalledVersion,
+    [string]$LocalVersion,
+    [bool]$NeedsUpdate
+  )
+
+  if ($InstalledVersion) {
+    Write-Host "$ProgramName ist installiert." -ForegroundColor Green
+    Write-Host "    Installierte Version:       $InstalledVersion" -ForegroundColor Cyan
+    Write-Host "    Installationsdatei Version: $LocalVersion"     -ForegroundColor Cyan
+    Write-DeployLog -Message "Installiert: $InstalledVersion | Lokal: $LocalVersion" -Level 'INFO'
+    if ($NeedsUpdate) {
+      Write-Host "        Veraltete $ProgramName ist installiert. Update wird gestartet." -ForegroundColor Magenta
+      Write-DeployLog -Message "Update erforderlich." -Level 'INFO'
+    } else {
+      Write-Host "        Installierte Version ist aktuell." -ForegroundColor DarkGray
+      Write-DeployLog -Message "Keine Aktion erforderlich." -Level 'INFO'
+    }
+  } else {
+    Write-Host "$ProgramName ist nicht installiert." -ForegroundColor Yellow
+    Write-DeployLog -Message "$ProgramName nicht in Registry gefunden." -Level 'INFO'
+  }
+}
+
+function Invoke-StandardInstallerDownload {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$ProgramName,
+    [Parameter(Mandatory)][string]$Url,
+    [Parameter(Mandatory)][string]$OutFile,
+    [string[]]$RemoveFiles,
+    [string]$RemovePattern,
+    [string]$Context
+  )
+
+  $ctxName   = if ($Context) { $Context } else { $ProgramName }
+  $removeArr = @($RemoveFiles | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+  [void](Invoke-InstallerDownload `
+    -Url                $Url `
+    -OutFile            $OutFile `
+    -ConfirmDownload `
+    -ReplaceOld `
+    -RemoveFiles        $removeArr `
+    -KeepFiles          @($OutFile) `
+    -EmitHostStatus `
+    -SuccessHostMessage "$ProgramName wurde aktualisiert.." `
+    -FailureHostMessage "Download ist fehlgeschlagen. $ProgramName wurde nicht aktualisiert." `
+    -SuccessLogMessage  "$ProgramName erfolgreich aktualisiert: $OutFile" `
+    -FailureLogMessage  "Download fehlgeschlagen: $OutFile" `
+    -Context            $ctxName)
 }

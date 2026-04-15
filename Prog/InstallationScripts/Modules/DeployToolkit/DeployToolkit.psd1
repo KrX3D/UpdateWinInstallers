@@ -55,6 +55,8 @@
     'Get-DeployConfigOrExit',
     'Get-InstallerVersionForComparison',
     'Show-VersionStateSummary',
-    'Import-DeployConfig'
+    'Import-DeployConfig',
+    'Write-VersionStatus',
+    'Invoke-StandardInstallerDownload'
   )
 }

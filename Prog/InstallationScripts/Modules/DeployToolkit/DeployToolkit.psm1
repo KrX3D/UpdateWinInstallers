@@ -40,5 +40,7 @@ Export-ModuleMember -Function @(
   'Stop-DeployContext',
   'Get-SharedConfigPath',
   'Get-DeployConfigOrExit',
-  'Import-DeployConfig'
+  'Import-DeployConfig',
+  'Write-VersionStatus',
+  'Invoke-StandardInstallerDownload'
 )
